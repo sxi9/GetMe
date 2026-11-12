@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { D_STEPS, stepIndex } from '@getme/core';
-import { AlertBanner, Avatar, Body, Button, Checkbox, Chip, Header, Icon, IconButton, Input, Map, SegmentStepper, Stars, Toggle } from '../ui';
+import { AlertBanner, Avatar, Body, Button, Checkbox, Chip, Header, Icon, IconButton, Input, Map, SegmentStepper, Stars, StatusChip, Toggle } from '../ui';
 import { uploadFile, API_URL, post } from '../lib/api';
 import { fmtAddress } from '../lib/geo';
 import { useT } from '../lib/i18n';
@@ -13,7 +13,7 @@ import { firstName, navigateTo, phaseLabel, usePartner, fmtKm, type PView } from
 const P_STEPS = ['To pickup', 'Pickup', 'To receiver', 'Handover'];
 
 export function Job() {
-  const { t } = useT(); const nav = useNavigate(); const err = useErrorToast(); const { toast, session, online } = useStore();
+  const { t } = useT(); const nav = useNavigate(); const err = useErrorToast(); const { toast, session, online } = useStore(); const partner = session!.me.partner!;
   const { active: o, activeRun, mine, event, unread, clearActive, sim, setSim, gps, myPos, refreshRuns } = usePartner();
   const [sos, setSos] = useState(false); const [calling, setCalling] = useState(false); const [busy, setBusy] = useState(false);
   const [itemCost, setItemCost] = useState(''); const [costErr, setCostErr] = useState(''); const [receipt, setReceipt] = useState<string | null>(null); const [uploading, setUploading] = useState(false);
@@ -65,6 +65,8 @@ export function Job() {
   const etaLabel = target ? `${Math.max(2, Math.round(3 + (distKm(myPos, target) / 18) * 60))} min · ${fmtKm(distKm(myPos, target))}` : null;
   const dropName = parcel ? (o.receiver?.name ?? t('Receiver')) : custName;
   const total = o.bill.known ? o.bill.totalLabel : `₹${o.bill.fees} + items`;
+  const cryptoWait = o.pay === 'crypto' && o.crypto?.status !== 'paid';
+  const CRYPTO_CHIP: Record<string, { s: 'pending' | 'progress' | 'success' | 'fail' | 'ended'; l: string }> = { pending: { s: 'pending', l: 'Waiting' }, confirming: { s: 'progress', l: 'Confirming' }, paid: { s: 'success', l: 'Paid' }, expired: { s: 'ended', l: 'Expired' }, failed: { s: 'fail', l: 'Failed' } };
   const addr = fmtAddress(o.address) || o.address.line;
   const directions = [o.address.directions, o.address.landmark && t('Landmark: {x}', { x: o.address.landmark })].filter(Boolean).join('. ');
   const speak = () => { try { const u = new SpeechSynthesisUtterance(`${addr}. ${directions}`); window.speechSynthesis.cancel(); window.speechSynthesis.speak(u); } catch { toast(t('This device cannot read aloud')); } };
@@ -89,7 +91,7 @@ export function Job() {
         <SegmentStepper steps={(parcel ? P_STEPS : D_STEPS.map(s => s[0])).map(s => t(s))} index={idx} />
         {queued && <AlertBanner type="caution" icon="cloud_off">{queued}</AlertBanner>}
         {!online && !queued && <AlertBanner type="caution" icon="cloud_off">{t('Offline. Steps you take are saved and sent when the network is back.')}</AlertBanner>}
-        {active && <div style={{ flexShrink: 0 }}><Map a={origin} aIcon={parcel ? 'inventory_2' : 'storefront'} b={o.address} bIcon={parcel ? 'person_pin_circle' : 'home'} me={myPos} route={target ? [myPos, target] : origin ? [origin, o.address] : null} eta={etaLabel} /></div>}
+        {active && <div style={{ flexShrink: 0 }}><Map a={origin} aIcon={parcel ? 'inventory_2' : 'storefront'} b={o.address} bIcon={parcel ? 'person_pin_circle' : 'home'} me={myPos} meHeading={partner.heading} meVehicle={partner.vehicle} route={target ? [myPos, target] : origin ? [origin, o.address] : null} eta={etaLabel ? `${etaLabel}${o.traffic ? ` · ${t('Traffic: {level}', { level: t(o.traffic) })}` : ''}` : null} traffic={o.traffic} follow /></div>}
         {active && gps !== 'ok' && gps !== 'unknown' && <div className="between cap"><span>{gps === 'denied' ? t('Location blocked') : t('No GPS')} · {sim ? t('moving along the route automatically') : t('position frozen')}</span><Toggle checked={sim} onChange={setSim} label={t('Simulate movement')} /></div>}
 
         {o.status === 'to_shop' && (
@@ -174,7 +176,8 @@ export function Job() {
               </>
             )}
             {o.pay === 'cod' && <Checkbox checked={cash} onChange={setCash} label={t('Collected {total} in cash', { total })} />}
-            <Button color="primary" size="tall" fullWidth icon="task_alt" loading={busy} onClick={complete}>{t('Complete delivery')}</Button>
+            {cryptoWait && <div className="card flat" style={{ background: 'var(--surface-info-light)', gap: 6 }}><div className="between"><div className="row" style={{ gap: 8 }}><Icon name="currency_bitcoin" size={22} color="var(--brand-primary-rest)" /><div className="b">{t("Waiting for the customer's crypto payment")}</div></div><StatusChip status={(CRYPTO_CHIP[o.crypto?.status ?? 'pending'] ?? CRYPTO_CHIP.pending).s} label={t((CRYPTO_CHIP[o.crypto?.status ?? 'pending'] ?? CRYPTO_CHIP.pending).l)} /></div><div className="cap13">{o.crypto ? `${o.crypto.amountCrypto} ${o.crypto.currency} · ${o.crypto.network}` : t('Invoice not created yet')} · {t('Complete delivery unlocks once it is confirmed. You are paid in rupees as usual.')}</div></div>}
+            <Button color="primary" size="tall" fullWidth icon="task_alt" loading={busy} disabled={cryptoWait} onClick={complete}>{cryptoWait ? t('Waiting for payment…') : t('Complete delivery')}</Button>
           </div>
         )}
 
@@ -184,6 +187,7 @@ export function Job() {
               <Icon name="check_circle" size={48} color="var(--brand-confirm-rest)" />
               <div style={{ font: '600 18px/24px var(--font-sans)' }}>{t('Delivered · you earned ₹{n}', { n: o.earn })}</div>
               <div className="cap13">{o.tip ? t('Includes a ₹{n} tip.', { n: o.tip }) : t('Tips show up once the customer rates you.')}{o.pay === 'cod' ? codNote(o, t) : ''}</div>
+              {o.pay === 'crypto' && o.crypto && <div className="cap13"><Icon name="currency_bitcoin" size={14} /> {t('Paid in {currency}', { currency: o.crypto.currency })} · {t('settled to you in rupees')}</div>}
               {o.podPhotoUrl && <img src={API_URL + o.podPhotoUrl} alt="" style={{ maxHeight: 100, borderRadius: 4, border: '1px solid var(--surface-border)' }} />}
             </div>
             <div className="card flat">
@@ -197,7 +201,7 @@ export function Job() {
         {active && (
           <div className="card row" style={{ padding: 12 }}>
             <Avatar initials={custInitials} size="lg" />
-            <div className="grow"><div className="b">{custName}</div><div className="cap">{o.pay === 'cod' ? t('Cash on delivery') : t('Paid in app')} · {o.kind === 'parcel' ? t('package sender') : t('{n} items', { n: o.items.length })}{o.anon ? ` · ${t('anonymous')}` : ''}</div></div>
+            <div className="grow"><div className="b">{custName}</div><div className="cap">{o.pay === 'cod' ? t('Cash on delivery') : o.pay === 'crypto' ? t('Paid in crypto (app)') : t('Paid in app')} · {o.kind === 'parcel' ? t('package sender') : t('{n} items', { n: o.items.length })}{o.anon ? ` · ${t('anonymous')}` : ''}</div></div>
             <IconButton icon="chat" label={t('Chat')} color="primary" badge={unread} onClick={() => nav('/partner/job/chat')} />
             <IconButton icon="call" label={t('Call')} color="primary" onClick={() => setCalling(true)} />
           </div>

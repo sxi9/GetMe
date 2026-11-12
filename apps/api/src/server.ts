@@ -182,8 +182,9 @@ app.get<{ Params: { id: string } }>('/api/orders/:id', async (req) => {
 });
 app.post<{ Params: { id: string }; Body: OrderEventInput }>('/api/orders/:id/events', async (req) => {
   const c = ctxOf(req);
-  const ev = { ...(req.body as any), actor: c.user.role === 'admin' ? 'system' : c.user.role } as OrderEventInput;
-  const o = svc.event(c, req.params.id, ev, (req.headers['idempotency-key'] as string | undefined) || undefined);
+  const { idempotencyKey, ...body } = (req.body as any) ?? {};
+  const ev = { ...body, actor: c.user.role === 'admin' ? 'system' : c.user.role } as OrderEventInput;
+  const o = svc.event(c, req.params.id, ev, (req.headers['idempotency-key'] as string | undefined) || idempotencyKey || undefined);
   return svc.view(o, c.user.role, c);
 });
 app.get<{ Params: { id: string } }>('/api/orders/:id/partners', async (req) => svc.choosable(requireRole(req, 'customer'), req.params.id));

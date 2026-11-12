@@ -17,7 +17,7 @@ export function RequestCard({ o }: { o: PView }) {
   const pickup = (o.kind === 'parcel' ? `${t('Pickup')} · ${o.pickup?.area ?? o.pickup?.line ?? t('customer')}` : o.shopId ? o.shopName : t('Any nearby shop')) + (o.distKm != null ? ` · ${t('{d} away', { d: fmtKm(o.distKm) })}` : '');
   const drop = (fmtAddress(o.address) || o.address.area || o.address.line) + (o.shopPos || o.pickup ? ` · ${t('{d} leg', { d: fmtKm(o.legKm) })}` : '');
   const handoff = o.address.handoff === 'gate' ? t('leave at gate') : o.address.handoff === 'leave_at_door' ? t('leave at door') : '';
-  const pay = o.pay === 'cod' ? t('collect {x} in cash', { x: o.bill.totalLabel }) : t('paid in app');
+  const pay = o.pay === 'cod' ? t('collect {x} in cash', { x: o.bill.totalLabel }) : o.pay === 'crypto' ? t('Paid in crypto (app)') : t('paid in app');
   const when = (o.when === 'now' ? t('Deliver now') : t('Scheduled · {slot}', { slot: o.slot ?? '' })) + (o.budget ? ` · ${t('budget ₹{n}', { n: o.budget })}` : o.kind === 'list' ? ` · ${t('no budget cap')}` : '');
   const run = async (body: Record<string, unknown>, ok?: string) => { setBusy(true); try { const r = await event(o.id, body); if (r.queued) { toast(t('No network. Saved · will send when you are back online')); return; } if (ok) toast(ok); if (body.type === 'accept' && r.result.courierId) nav('/partner/job'); } catch (e) { err(e); } finally { setBusy(false); } };
   const canRespond = o.mode !== 'offers' && !o.myCounter;

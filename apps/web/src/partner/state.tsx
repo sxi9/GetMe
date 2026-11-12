@@ -15,6 +15,7 @@ export interface PView extends Omit<Order, 'otp'> {
   bill: { items: number | null; known: boolean; fees: number; total: number; totalLabel: string; itemsLabel: string };
   shopStatus: string | null; courierPos: { lat: number; lng: number } | null;
   run: { id: string; label: string; destination: string; departAt: string; status: string } | null;
+  traffic: 'light' | 'moderate' | 'heavy' | null;
 }
 /** A run as the API returns it to its partner. */
 export interface RView extends Run {
@@ -125,13 +126,14 @@ export function PartnerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!sim || !active || !(active.status === 'to_shop' || active.status === 'to_customer')) return;
     const target = active.status === 'to_shop' ? (active.shopPos ?? active.pickup ?? active.address) : active.address;
+    const step = active.traffic === 'heavy' ? 0.08 : active.traffic === 'moderate' ? 0.1 : 0.12; // heavy traffic: crawl
     const t = window.setInterval(() => {
       const cur = partner.pos ?? FALLBACK_POS;
       if (haversineKm(cur, target) < 0.04) return;
-      postLocation({ lat: cur.lat + (target.lat - cur.lat) * 0.12, lng: cur.lng + (target.lng - cur.lng) * 0.12 });
+      postLocation({ lat: cur.lat + (target.lat - cur.lat) * step, lng: cur.lng + (target.lng - cur.lng) * step });
     }, 1500);
     return () => window.clearInterval(t);
-  }, [sim, active?.id, active?.status, partner.pos, postLocation]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sim, active?.id, active?.status, active?.traffic, partner.pos, postLocation]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Order event; queued offline (and replayed later) instead of failing. */
   const event = useCallback(async (orderId: string, body: Record<string, unknown>): Promise<EventResult> => {

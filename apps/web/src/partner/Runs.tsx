@@ -151,7 +151,7 @@ export function RunDetail() {
           {!orders.length && <div className="drop" style={{ cursor: 'default' }}><Icon name="group" size={26} color="var(--icon)" />{t('Nobody has joined yet. Orders appear here as neighbours add their lists.')}</div>}
           {orders.map(o => (
             <div key={o.id} className="card flat" style={{ gap: 6 }}>
-              <div className="row" style={{ gap: 8 }}><Avatar initials={o.anon ? 'C' : o.customerName.split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase()} size="sm" /><div className="grow b">{firstName(o)} · {o.id}</div><Chip label={o.pay === 'cod' ? t('Cash') : t('Paid in app')} /></div>
+              <div className="row" style={{ gap: 8 }}><Avatar initials={o.anon ? 'C' : o.customerName.split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase()} size="sm" /><div className="grow b">{firstName(o)} · {o.id}</div><Chip label={o.pay === 'cod' ? t('Cash') : o.pay === 'crypto' ? t('Paid in crypto (app)') : t('Paid in app')} /></div>
               <div className="cap13">{itemsLabel(o)}</div>
               <div className="cap13"><Icon name="home" size={14} /> {fmtAddress(o.address) || o.address.line}{o.address.handoff && o.address.handoff !== 'in_person' ? ` · ${o.address.handoff === 'gate' ? t('leave at gate') : t('leave at door')}` : ''}</div>
               {o.note && <div className="cap">“{o.note}”</div>}

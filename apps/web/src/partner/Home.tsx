@@ -62,7 +62,7 @@ export function Home() {
         {p.online && list.map(o => <RequestCard key={o.id} o={o} />)}
         {p.online && !list.length && !live && !activeRun && <div className="drop" style={{ padding: 20, cursor: 'default' }}><Icon name="radar" size={28} color="var(--icon)" />{t('No requests right now. Stay online — new requests appear here.')}</div>}
         {!p.online && p.verified && <AlertBanner type="neutral">{t('You are offline. Requests are paused until you go online.')}</AlertBanner>}
-        <div style={{ flexShrink: 0 }}><Map me={myPos} pool={pool} /></div>
+        <div style={{ flexShrink: 0 }}><Map me={myPos} meHeading={p.heading} meVehicle={p.vehicle} pool={pool} /></div>
         {(gps === 'unavailable' || gps === 'denied') && <div className="between cap"><span>{gps === 'denied' ? t('Location blocked in the browser') : t('No GPS on this device')} · {t('position is simulated')}</span><Toggle checked={sim} onChange={setSim} label={t('Simulate')} /></div>}
       </Body>
     </>
