@@ -59,7 +59,7 @@ export function RunDetail() {
         {err && <div className="card">{err}</div>}
         {run && <>
           <RunCard r={run} />
-          <Map a={run.from} aIcon="trip_origin" b={run.destinationPos ?? null} bIcon="storefront" me={address ? { lat: address.lat, lng: address.lng } : null} route={run.destinationPos ? [run.from, run.destinationPos] : null} />
+          <div style={{ flexShrink: 0 }}><Map a={run.from} aIcon="trip_origin" b={run.destinationPos ?? null} bIcon="storefront" me={address ? { lat: address.lat, lng: address.lng } : null} route={run.destinationPos ? [run.from, run.destinationPos] : null} /></div>
           <div className="card flat" style={{ gap: 6, fontSize: 13, lineHeight: '20px' }}>
             <div className="between"><span>{t('Leaves')}</span><span className="b">{dayAt(run.departAt)} {timeAt(run.departAt)}</span></div>
             <div className="between"><span>{t('Add orders until')}</span><span className="b">{timeAt(run.cutoffAt)}</span></div>

@@ -45,7 +45,7 @@ export function Checkout() {
 
   useEffect(() => {
     let live = true;
-    api('/api/orders/quote', { method: 'POST', body: { ...input, mode, runId: mode === 'run' ? runId : null, pay, promoCode: applied } }).then(q => {
+    api('/api/orders/quote', { method: 'POST', body: { ...input, mode: mode === 'run' && !runId ? 'broadcast' : mode, runId: mode === 'run' ? runId : null, pay, promoCode: applied } }).then(q => {
       if (!live) return; setQuote(q); setErr('');
       if (!defaulted.current && q.region) { defaulted.current = true; setPay(q.region.defaultPay); if (q.region.defaultMode === 'run' && runs.length) setMode('run'); else if (q.region.defaultMode !== 'run') setMode(q.region.defaultMode); }
     }).catch(e => { if (live) setErr(e.message); });

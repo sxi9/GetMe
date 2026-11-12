@@ -55,10 +55,10 @@ export class Service {
   notify(userId: string, title: string, body: string, orderId: string | null = null, opts: { important?: boolean; url?: string } = {}) {
     const n: Notification = { id: uid('n_'), userId, title, body, orderId, read: false, at: now() };
     this.db.putNotification(n);
-    this.bus.send(userId, { type: 'notify', title, body, orderId });
     const user = this.db.getUser(userId);
+    const url = opts.url ?? (user && orderId ? `/${user.role}/order/${orderId}` : user ? `/${user.role}` : '/');
+    this.bus.send(userId, { type: 'notify', title, body, orderId, url } as any);
     if (!user || !user.pushEnabled) return;
-    const url = opts.url ?? (orderId ? `/${user.role}/order/${orderId}` : `/${user.role}`);
     void (async () => {
       const delivered = this.push ? await this.push.send(userId, { title, body, url, tag: orderId ?? undefined }) : 0;
       if (!delivered && (opts.important || !this.bus.online(userId)) && user.phone && this.sms) await this.sms.send(user.phone, `GetMe: ${title}${body ? ' – ' + body : ''}`);

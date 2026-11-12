@@ -15,14 +15,14 @@ interface Store {
   signOut: () => void;
   refreshMe: () => Promise<void>;
   setMe: (patch: Partial<Me>) => void;
-  toast: (text: string, title?: string, orderId?: string | null) => void;
-  toasts: { id: number; text: string; title: string; orderId: string | null }[];
+  toast: (text: string, title?: string, orderId?: string | null, url?: string | null) => void;
+  toasts: { id: number; text: string; title: string; orderId: string | null; url: string | null }[];
   dismissToast: (id: number) => void;
   subscribe: (h: Handler) => () => void;
   connected: boolean;
   online: boolean;
   queue: Queued[];
-  onToastClick: React.MutableRefObject<((orderId: string | null) => void) | null>;
+  onToastClick: React.MutableRefObject<((orderId: string | null, url?: string | null) => void) | null>;
 }
 const Ctx = createContext<Store | null>(null);
 const KEY = (role: Role) => 'getme.session.' + role;
@@ -35,7 +35,7 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
   const [queue, setQueue] = useState<Queued[]>([]);
   useEffect(() => { const on = () => { setOnline(true); void flush(); }, off = () => setOnline(false); window.addEventListener('online', on); window.addEventListener('offline', off); const un = onQueue(setQueue); return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); un(); }; }, []);
   const handlers = useRef(new Set<Handler>());
-  const onToastClick = useRef<((orderId: string | null) => void) | null>(null);
+  const onToastClick = useRef<((orderId: string | null, url?: string | null) => void) | null>(null);
   const seq = useRef(0);
   setToken(session?.token ?? null);
 
@@ -44,7 +44,7 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
   const signOut = useCallback(() => { api('/api/auth/logout', { method: 'POST', body: {} }).catch(() => {}); persist(null); }, [persist]);
   const refreshMe = useCallback(async () => { if (!getToken()) return; try { const me = await api<Me>('/api/me'); setSession(s => s ? { ...s, me } : s); } catch (e: any) { if (e.status === 401) persist(null); } }, [persist]);
   const setMe = useCallback((p: Partial<Me>) => setSession(s => s ? { ...s, me: { ...s.me, ...p } } : s), []);
-  const toast = useCallback((text: string, title = 'GetMe · now', orderId: string | null = null) => { const id = ++seq.current; setToasts(t => [...t.slice(-2), { id, text, title, orderId }]); try { if (document.visibilityState === 'visible' && navigator.vibrate) navigator.vibrate(40); } catch { /* ignore */ } }, []);
+  const toast = useCallback((text: string, title = 'GetMe · now', orderId: string | null = null, url: string | null = null) => { const id = ++seq.current; setToasts(t => [...t.slice(-2), { id, text, title, orderId, url }]); try { if (document.visibilityState === 'visible' && navigator.vibrate && (navigator as any).userActivation?.hasBeenActive) navigator.vibrate(40); } catch { /* ignore */ } }, []);
   const dismissToast = useCallback((id: number) => setToasts(t => t.filter(x => x.id !== id)), []);
   const subscribe = useCallback((h: Handler) => { handlers.current.add(h); return () => { handlers.current.delete(h); }; }, []);
 
@@ -59,7 +59,7 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
       ws.onopen = () => { setConnected(true); retry = 1000; refreshMe(); void flush(); };
       ws.onmessage = (m) => {
         let ev: OrderEvent; try { ev = JSON.parse(m.data); } catch { return; }
-        if (ev.type === 'notify') toast(ev.body ? `${ev.title} · ${ev.body}` : ev.title, 'GetMe · now', ev.orderId);
+        if (ev.type === 'notify') toast(ev.body ? `${ev.title} · ${ev.body}` : ev.title, 'GetMe · now', ev.orderId, (ev as any).url ?? null);
         if (ev.type === 'wallet.updated') setSession(s => s ? { ...s, me: { ...s.me, wallet: ev.balance } } : s);
         if (ev.type === 'partner.updated') setSession(s => s ? { ...s, me: { ...s.me, partner: ev.partner } } : s);
         if (ev.type === 'shop.updated') setSession(s => s ? { ...s, me: { ...s.me, shop: ev.shop } } : s);

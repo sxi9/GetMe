@@ -42,7 +42,7 @@ export function AddressEditor({ open, onClose, initial, onSave, title, saveLabel
         <Input placeholder={t('Search a place, area or landmark')} prefixIcon="search" value={q} onChange={e => setQ(e.target.value)} />
         {hits.length > 0 && <div className="list">{hits.map((h, i) => <div key={i} className="item clickable" style={{ padding: '8px 12px' }} onClick={() => pick(h)}><Icon name="place" size={18} color="var(--icon)" /><div className="grow"><div style={{ fontSize: 13, fontWeight: 600 }}>{h.line}</div><div className="cap">{h.area}</div></div></div>)}</div>}
       </div>
-      <MapPicker value={a.lat != null ? { lat: a.lat, lng: a.lng! } : null} onChange={onPin} height={220} />
+      <div style={{ flexShrink: 0 }}><MapPicker value={a.lat != null ? { lat: a.lat, lng: a.lng! } : null} onChange={onPin} height={220} /></div>
       <div className="row" style={{ gap: 8 }}><div className="cap grow">{a.source === 'gps' ? t('From your GPS') + (a.accuracyM ? ` · ±${a.accuracyM} m` : '') : a.lat != null ? t('Pin dropped. Drag the map to adjust.') : t('Move the map so the pin sits on your door or gate.')}</div><Button variant="text" color="primary" size="small" icon="my_location" onClick={mine} loading={busy}>{t('Use my location')}</Button></div>
       <div className="wrap">{LABELS.map(l => <Chip key={l} label={t(l)} selected={a.label === l} onClick={() => set({ label: l })} />)}</div>
       <Input label={t('Address or place')} placeholder={t('Street, house, or how people call this place')} value={a.line ?? ''} onChange={e => set({ line: e.target.value })} prefixIcon="location_on" />

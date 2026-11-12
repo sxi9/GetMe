@@ -349,7 +349,7 @@ export type OrderEvent =
   | { type: 'message.sent'; message: Message }
   | { type: 'order.cancelled'; orderId: string; by: Role | 'system' }
   | { type: 'order.completed'; orderId: string }
-  | { type: 'notify'; title: string; body: string; orderId: string | null }
+  | { type: 'notify'; title: string; body: string; orderId: string | null; url?: string | null }
   | { type: 'run.updated'; run: Run }
   | { type: 'announcement'; announcement: Announcement }
   | { type: 'shop.updated'; shop: Shop }
