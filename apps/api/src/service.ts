@@ -177,6 +177,7 @@ export class Service {
       shop.items = shop.items.map(ci => { const line = o.items.find(i => i.itemId === ci.id); return line ? { ...ci, stock: ci.stock - line.qty, on: ci.stock - line.qty > 0 } : ci; });
       this.db.putShop(shop);
       this.bus.send(shop.ownerId, { type: 'shop.updated', shop });
+      this.bus.send(shop.ownerId, { type: 'order.created', order: this.view(o, 'shop') });
     }
     if (o.repeat && o.kind !== 'parcel') this.createSubscription(ctx, o);
     this.bus.send(o.customerId, { type: 'order.created', order: this.view(o, 'customer') });

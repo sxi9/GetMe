@@ -10,7 +10,10 @@ const OFFERS: Record<string, [number, number, number]> = { fathima: [45, 14, 250
 export class Sim {
   private timers = new Map<string, NodeJS.Timeout[]>();
   private handled = new Set<string>();
-  constructor(private svc: Service, private speed = 1) {}
+  constructor(private svc: Service, private speed = 1) {
+    // Idle bots keep a fresh location so they stay eligible for dispatch.
+    setInterval(() => { for (const id of BOT_IDS) { const p = this.svc.db.getPartner(id); if (p && !p.activeOrderId && p.pos) this.svc.db.putPartner({ ...p, posAt: new Date().toISOString() }); } }, 30_000).unref();
+  }
 
   private after(orderId: string, ms: number, fn: () => void) {
     const id = setTimeout(() => { try { fn(); } catch (e) { console.error('[sim]', (e as Error).message); } }, ms * this.speed);

@@ -29,7 +29,7 @@ export function Map({ center, a, aIcon = 'storefront', b, bIcon = 'home', courie
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors', maxZoom: 19 }).addTo(m);
     m.setView([center?.lat ?? 12.9121, center?.lng ?? 77.6446], 15);
     map.current = m;
-    return () => { m.remove(); map.current = null; };
+    return () => { m.remove(); map.current = null; layers.current = { pool: [] }; fitted.current = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -55,7 +55,8 @@ export function Map({ center, a, aIcon = 'storefront', b, bIcon = 'home', courie
     const pts = [a, b, me, ...(fitted.current ? [] : [courier]), ...pool].filter(Boolean) as LatLng[];
     if (pts.length && !fitted.current) { fitted.current = true; if (pts.length === 1) m.setView([pts[0].lat, pts[0].lng], 15); else m.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lng])), { padding: [28, 28], maxZoom: 16, animate: false }); }
     else if (!pts.length && center) m.setView([center.lat, center.lng], 15);
-    setTimeout(() => m.invalidateSize(), 50);
+    const t = setTimeout(() => { if (map.current === m) m.invalidateSize(); }, 50);
+    return () => clearTimeout(t);
   }, [a, b, courier, me, pool, route, aIcon, bIcon, center]);
 
   return <div className={'map' + (tall ? ' tall' : '')}><div ref={el} style={{ width: '100%', height: '100%' }} />{eta && <div className="eta">{eta}</div>}</div>;
