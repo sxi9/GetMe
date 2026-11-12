@@ -37,7 +37,7 @@ export function Home() {
           <div className="row" style={{ gap: 4, fontWeight: 600, fontSize: 15, lineHeight: '22px', cursor: 'pointer' }} onClick={() => nav('/customer/profile')}><Icon name="location_on" size={18} color="var(--gm-accent)" />{home ? `${home.label} · ${home.area ?? home.line}` : 'Add an address'}<Icon name="expand_more" size={18} /></div>
         </div>
         <IconButton icon="notifications" label="Notifications" color="reverse" onClick={openBell} badge={unreadN || undefined} />
-        <Avatar initials={initials(user.name)} size="md" style={{ cursor: 'pointer' }} onClick={() => nav('/customer/profile')} />
+        <span style={{ cursor: "pointer", display: "inline-flex" }} onClick={() => nav("/customer/profile")}><Avatar initials={initials(user.name)} size="md" /></span>
       </div>
       <Body>
         <Input placeholder="Search shops or items" prefixIcon="search" value={q} onChange={e => setQ(e.target.value)} />
