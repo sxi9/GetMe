@@ -13,6 +13,7 @@ export function Home() {
   const nav = useNavigate();
   const [notif, setNotif] = useState(false);
   const list = useMemo(() => Object.values(requests).sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt)), [requests]);
+  const pool = useMemo(() => list.map(o => o.shopPos ?? o.pickup ?? o.address), [list]);
   const toggle = async (on: boolean) => { try { setMe({ partner: await post('/api/partner/online', { online: on }) }); toast(on ? `You are online in ${p.area}` : 'You are offline. New requests paused'); } catch (e) { err(e); } };
   const live = active && active.status !== 'delivered' ? active : null;
   const sub = p.online ? `Taking requests in ${p.area}${list.length ? ` · ${list.length} open nearby` : ''}` : 'Go online to see requests';
@@ -42,7 +43,7 @@ export function Home() {
         {p.online && list.map(o => <RequestCard key={o.id} o={o} />)}
         {p.online && !list.length && !live && <div className="drop" style={{ padding: 20, cursor: 'default' }}><Icon name="radar" size={28} color="var(--icon)" />No requests right now. Stay online — new requests appear here.</div>}
         {!p.online && <AlertBanner type="neutral">You are offline. Requests are paused until you go online.</AlertBanner>}
-        <Map me={myPos} pool={list.map(o => o.shopPos ?? o.pickup ?? o.address)} />
+        <div style={{ flexShrink: 0 }}><Map me={myPos} pool={pool} /></div>
         {gps === 'unavailable' && <div className="between cap"><span>No GPS on this device · position is simulated</span><Toggle checked={sim} onChange={setSim} label="Simulate" /></div>}
       </Body>
       <Sheet open={notif} onClose={() => setNotif(false)} title="Notifications"><Notifications /></Sheet>
@@ -65,7 +66,7 @@ export function RequestScreen() {
     <>
       <Header title={o ? `Request ${o.id}` : 'Request'} onBack={() => nav('/partner')} />
       <Body>
-        {o ? <><RequestCard o={o} /><Map me={myPos} a={o.shopPos ?? o.pickup ?? null} aIcon={o.kind === 'parcel' ? 'inventory_2' : 'storefront'} b={o.address} bIcon={o.kind === 'parcel' ? 'person_pin_circle' : 'home'} route={[o.shopPos ?? o.pickup ?? myPos, o.address]} /></> : <AlertBanner type="neutral">This request is no longer open.</AlertBanner>}
+        {o ? <><RequestCard o={o} /><div style={{ flexShrink: 0 }}><Map me={myPos} a={o.shopPos ?? o.pickup ?? null} aIcon={o.kind === 'parcel' ? 'inventory_2' : 'storefront'} b={o.address} bIcon={o.kind === 'parcel' ? 'person_pin_circle' : 'home'} route={[o.shopPos ?? o.pickup ?? myPos, o.address]} /></div></> : <AlertBanner type="neutral">This request is no longer open.</AlertBanner>}
       </Body>
     </>
   );

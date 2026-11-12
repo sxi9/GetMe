@@ -26,7 +26,7 @@ export function Map({ center, a, aIcon = 'storefront', b, bIcon = 'home', courie
   useEffect(() => {
     if (!el.current || map.current) return;
     const m = L.map(el.current, { zoomControl: false, attributionControl: true, dragging: interactive, scrollWheelZoom: false, touchZoom: interactive, doubleClickZoom: interactive });
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { attribution: '© OpenStreetMap © CARTO', maxZoom: 19 }).addTo(m);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors', maxZoom: 19 }).addTo(m);
     m.setView([center?.lat ?? 12.9121, center?.lng ?? 77.6446], 15);
     map.current = m;
     return () => { m.remove(); map.current = null; };
@@ -35,6 +35,7 @@ export function Map({ center, a, aIcon = 'storefront', b, bIcon = 'home', courie
 
   useEffect(() => {
     const m = map.current; if (!m) return;
+    m.stop();
     const ly = layers.current;
     const pin = (k: 'a' | 'b', pos: LatLng | null | undefined, cls: string, icon: string) => {
       if (!pos) { ly[k]?.remove(); ly[k] = undefined; return; }
@@ -52,7 +53,7 @@ export function Map({ center, a, aIcon = 'storefront', b, bIcon = 'home', courie
     if (route && route.length > 1) { const ll = route.map(p => [p.lat, p.lng] as [number, number]); if (!ly.route) ly.route = L.polyline(ll, { color: '#0072CE', weight: 4, dashArray: '1 8', lineCap: 'round' }).addTo(m); else ly.route.setLatLngs(ll); }
     else { ly.route?.remove(); ly.route = undefined; }
     const pts = [a, b, me, ...(fitted.current ? [] : [courier]), ...pool].filter(Boolean) as LatLng[];
-    if (pts.length && !fitted.current) { fitted.current = true; if (pts.length === 1) m.setView([pts[0].lat, pts[0].lng], 15); else m.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lng])), { padding: [28, 28], maxZoom: 16 }); }
+    if (pts.length && !fitted.current) { fitted.current = true; if (pts.length === 1) m.setView([pts[0].lat, pts[0].lng], 15); else m.fitBounds(L.latLngBounds(pts.map(p => [p.lat, p.lng])), { padding: [28, 28], maxZoom: 16, animate: false }); }
     else if (!pts.length && center) m.setView([center.lat, center.lng], 15);
     setTimeout(() => m.invalidateSize(), 50);
   }, [a, b, courier, me, pool, route, aIcon, bIcon, center]);

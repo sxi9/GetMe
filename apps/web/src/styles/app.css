@@ -68,6 +68,7 @@ button { font-family: inherit; }
 .chrome-btn:active { background: rgba(255,255,255,.22); }
 .body { animation: gm-in .22s ease; flex: 1; overflow: auto; padding: 16px; display: flex; flex-direction: column; gap: 16px; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .body::-webkit-scrollbar { display: none; }
+.body > * { flex-shrink: 0; }
 .body.tight { gap: 8px; }
 .tabbar { display: flex; height: calc(56px + env(safe-area-inset-bottom)); padding-bottom: env(safe-area-inset-bottom); background: var(--surface); border-top: 1px solid var(--divider); flex-shrink: 0; }
 @media (min-width: 480px) and (min-height: 700px) { .tabbar { height: 76px; padding-bottom: 20px; } }

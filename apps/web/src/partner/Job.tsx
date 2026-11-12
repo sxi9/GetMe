@@ -54,7 +54,7 @@ export function Job() {
       </Header>
       <Body>
         <SegmentStepper steps={parcel ? P_STEPS : D_STEPS.map(s => s[0])} index={idx} />
-        {active && <Map a={origin} aIcon={parcel ? 'inventory_2' : 'storefront'} b={o.address} bIcon={parcel ? 'person_pin_circle' : 'home'} me={myPos} route={target ? [myPos, target] : origin ? [origin, o.address] : null} eta={etaLabel} />}
+        {active && <div style={{ flexShrink: 0 }}><Map a={origin} aIcon={parcel ? 'inventory_2' : 'storefront'} b={o.address} bIcon={parcel ? 'person_pin_circle' : 'home'} me={myPos} route={target ? [myPos, target] : origin ? [origin, o.address] : null} eta={etaLabel} /></div>}
         {active && gps === 'unavailable' && <div className="between cap"><span>No GPS · {sim ? 'moving along the route automatically' : 'position frozen'}</span><Toggle checked={sim} onChange={setSim} label="Simulate movement" /></div>}
 
         {o.status === 'to_shop' && (
@@ -132,7 +132,7 @@ export function Job() {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '8px 0', textAlign: 'center' }}>
               <Icon name="check_circle" size={48} color="var(--brand-confirm-rest)" />
               <div style={{ font: '600 18px/24px var(--font-sans)' }}>Delivered · you earned ₹{o.earn}</div>
-              <div className="cap13">{o.tip ? `Includes a ₹${o.tip} tip.` : 'Tips show up once the customer rates you.'}{o.pay === 'cod' ? ` ₹${o.bill.total - o.fee.delivery - o.fee.extra} of the cash is due to GetMe.` : ''}</div>
+              <div className="cap13">{o.tip ? `Includes a ₹${o.tip} tip.` : 'Tips show up once the customer rates you.'}{o.pay === 'cod' ? codNote(o) : ''}</div>
             </div>
             <div className="card flat">
               <div className="b">Rate the customer</div>
@@ -157,6 +157,7 @@ export function Job() {
     </>
   );
 }
+function codNote(o: PView) { const due = o.bill.total - o.fee.delivery - o.fee.extra - (o.kind === 'list' ? (o.itemCost ?? 0) : 0); return due > 0 ? ` ₹${due} of the cash is due to GetMe.` : due < 0 ? ` GetMe owes you ₹${-due} on top of the cash.` : ''; }
 const SHOP_LABEL: Record<string, string> = { new: 'not started', preparing: 'preparing', ready: 'ready for pickup', handed: 'handed over', done: 'done' };
 const SHOP_BANNER: Record<string, string> = { new: 'The shop has not started packing yet. Check in at the counter.', preparing: 'The shop is packing this order.', ready: 'Ready for pickup at the counter.', handed: 'The shop marked this handed to you.', done: 'Done.' };
 function distKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }) { const R = 6371, dLat = ((b.lat - a.lat) * Math.PI) / 180, dLng = ((b.lng - a.lng) * Math.PI) / 180; const h = Math.sin(dLat / 2) ** 2 + Math.cos((a.lat * Math.PI) / 180) * Math.cos((b.lat * Math.PI) / 180) * Math.sin(dLng / 2) ** 2; return 2 * R * Math.asin(Math.sqrt(h)); }

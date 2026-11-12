@@ -71,7 +71,7 @@ export function PartnerProvider({ children }: { children: ReactNode }) {
   }, [partner.id, refreshEarnings]);
 
   useEvent(ev => {
-    if (ev.type === 'order.created' || ev.type === 'order.updated') absorb(ev.order as PView);
+    if (ev.type === 'order.created' || ev.type === 'order.updated') absorb(ev.order as unknown as PView);
     else if (ev.type === 'order.gone') setRequests(r => { const { [ev.orderId]: _, ...rest } = r; return rest; });
     else if (ev.type === 'message.sent') { const m = ev.message; if (activeRef.current?.id === m.orderId) { setMessages(ms => ms.some(x => x.id === m.id) ? ms : [...ms, m]); if (m.from === 'customer' && !locRef.current.endsWith('/job/chat')) setUnread(u => u + 1); } }
     else if (ev.type === 'order.completed') refreshEarnings();

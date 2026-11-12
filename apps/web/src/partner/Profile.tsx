@@ -24,7 +24,7 @@ export function Profile() {
           <Row icon="two_wheeler" label="Vehicle" caption={`${p.vehicle}${p.plate ? ` · ${p.plate}` : ' · add your plate'}`} onClick={() => setSheet('vehicle')} />
           <Row icon="verified_user" label="Documents" caption="Aadhaar, licence and insurance" right={<StatusChip status={p.verified ? 'success' : 'caution'} label={p.verified ? 'Verified' : 'Pending'} />} onClick={p.verified ? undefined : () => setSheet('docs')} chevron={!p.verified} />
           <Row icon="map" label="Service area" caption={p.area} onClick={() => setSheet('area')} />
-          <Row icon="account_balance" label="Payouts" caption={`Daily to SBI •••• 8821 · balance ₹${earnings?.balance ?? 0}`} onClick={() => setSheet('payouts')} />
+          <Row icon="account_balance" label="Payouts" caption={`Daily to SBI •••• 8821 · balance ${(earnings?.balance ?? 0) < 0 ? '−' : ''}₹${Math.abs(earnings?.balance ?? 0)}`} onClick={() => setSheet('payouts')} />
           <Row icon="currency_rupee" label="Purchase limit" caption={`Up to ₹${p.floatLimit} per list order · call support to raise`} chevron={false} />
           <Row icon="call" label="Mobile" caption={session!.me.user.phone ? `+91 ${session!.me.user.phone}` : session!.me.user.email ?? ''} chevron={false} />
         </div>

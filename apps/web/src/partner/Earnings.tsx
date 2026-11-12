@@ -27,7 +27,7 @@ export function Earnings() {
           <div className="cap">{e ? (e.bonus.trips >= e.bonus.target ? 'Unlocked today' : `${e.bonus.trips} of ${e.bonus.target} trips · ${e.bonus.target - e.bonus.trips} more to unlock ₹${e.bonus.amount}`) : ''}</div>
         </div>
         <div className="grid2">
-          <div className="card flat" style={{ padding: '10px 12px', gap: 0 }}><div className="overline">GetMe balance</div><div className="price" style={{ color: (e?.balance ?? 0) < 0 ? 'var(--brand-warn-rest)' : undefined }}>₹{e?.balance ?? 0}</div><div className="cap">{(e?.balance ?? 0) < 0 ? 'Due to GetMe' : 'Paid out daily'}</div></div>
+          <div className="card flat" style={{ padding: '10px 12px', gap: 0 }}><div className="overline">GetMe balance</div><div className="price" style={{ color: (e?.balance ?? 0) < 0 ? 'var(--brand-warn-rest)' : undefined }}>{(e?.balance ?? 0) < 0 ? '−' : ''}₹{Math.abs(e?.balance ?? 0)}</div><div className="cap">{(e?.balance ?? 0) < 0 ? 'Due to GetMe' : 'Paid out daily'}</div></div>
           <div className="card flat" style={{ padding: '10px 12px', gap: 0 }}><div className="overline">Cash collected</div><div className="price">₹{e?.codDue ?? 0}</div><div className="cap">COD · deposit by Friday</div></div>
         </div>
         <div className="col">
