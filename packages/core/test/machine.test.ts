@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { apply, bill, settle, makeFee, deliveryFeeForKm, eligiblePartners, dispatchTick, DISPATCH, promoFor, regionFor, REGIONS, joinableRuns } from '../src/index.js';
+import { apply, bill, settle, makeFee, deliveryFeeForKm, eligiblePartners, dispatchTick, DISPATCH, promoFor, regionFor, REGIONS, joinableRuns, bearing, trafficFactor, etaWithTraffic } from '../src/index.js';
 import type { Run } from '../src/index.js';
 import type { Order, Partner } from '../src/index.js';
 
@@ -111,7 +111,7 @@ test('pricing: fee ladder matches the handoff shop fees; promo caps at delivery'
 
 test('dispatch: eligibility by radius, online, free, freshness; ticks expand and expire', () => {
   const o = base({ shopPos: { lat: 12.91, lng: 77.64 } });
-  const p = (id: string, over: Partial<Partner> = {}): Partner => ({ id, userId: id, name: id, initials: 'X', photoUrl: null, tier: 'pro', documents: [], verification: 'verified', verificationNote: null, communityId: null, activeRunId: null, vehicle: 'Bike', plate: '', rating: 4.5, trips: 1, online: true, pos: { lat: 12.915, lng: 77.64 }, posAt: now, area: '', verified: true, activeOrderId: null, floatLimit: 2000, ...over });
+  const p = (id: string, over: Partial<Partner> = {}): Partner => ({ id, userId: id, name: id, initials: 'X', photoUrl: null, tier: 'pro', documents: [], verification: 'verified', verificationNote: null, communityId: null, activeRunId: null, heading: null, speedKmh: null, trail: [], vehicle: 'Bike', plate: '', rating: 4.5, trips: 1, online: true, pos: { lat: 12.915, lng: 77.64 }, posAt: now, area: '', verified: true, activeOrderId: null, floatLimit: 2000, ...over });
   const t = Date.parse(now) + 1000;
   const ids = (ps: Partner[]) => eligiblePartners(o, ps, t).map(x => x.id);
   assert.deepEqual(ids([p('a'), p('b', { online: false }), p('c', { activeOrderId: 'x' }), p('d', { pos: { lat: 13.0, lng: 77.64 } }), p('e', { posAt: '2020-01-01T00:00:00Z' })]), ['a']);
@@ -169,4 +169,15 @@ test('crypto: handover waits for the invoice to be paid; settlement is like a ca
   const paid = ok(apply({ ...o, crypto: { ...inv, status: 'paid' } }, { type: 'complete', actor: 'partner', partnerId: 'p1', otp: '4821', cashCollected: false }, now));
   assert.equal(paid.status, 'delivered');
   const s = settle(paid); assert.equal(s.customerCharge, 230); assert.equal(s.cashCollected, 0); assert.equal(s.partnerLedgerDelta, 45 + 180);
+});
+
+test('traffic model: city peak is heavier than midnight, observed speed pulls the estimate, bearing is sane', () => {
+  const peak = new Date('2026-11-12T09:30:00+05:30'), night = new Date('2026-11-12T01:00:00+05:30');
+  assert.equal(trafficFactor(peak, 'city').level, 'heavy');
+  assert.equal(trafficFactor(night, 'city').level, 'light');
+  assert.ok(etaWithTraffic(3, { at: peak, kind: 'city' }).min > etaWithTraffic(3, { at: night, kind: 'city' }).min);
+  assert.ok(etaWithTraffic(3, { at: peak, kind: 'city', observedKmh: 30 }).min < etaWithTraffic(3, { at: peak, kind: 'city' }).min, 'a fast partner shortens the ETA');
+  assert.equal(trafficFactor(night, 'village').level, 'moderate');
+  assert.equal(bearing({ lat: 12.9, lng: 77.6 }, { lat: 12.91, lng: 77.6 }), 0);
+  assert.equal(bearing({ lat: 12.9, lng: 77.6 }, { lat: 12.9, lng: 77.61 }), 90);
 });

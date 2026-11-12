@@ -45,3 +45,44 @@ export function remainingFraction(from: LatLng, to: LatLng, cur: LatLng): number
   if (total < 0.01) return 0;
   return Math.max(0, Math.min(1, haversineKm(cur, to) / total));
 }
+
+/** Initial bearing from a to b, degrees clockwise from north. */
+export function bearing(a: LatLng, b: LatLng): number {
+  const φ1 = (a.lat * Math.PI) / 180, φ2 = (b.lat * Math.PI) / 180, Δλ = ((b.lng - a.lng) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2), x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (Math.round((Math.atan2(y, x) * 180) / Math.PI) + 360) % 360;
+}
+
+export type TrafficLevel = 'light' | 'moderate' | 'heavy';
+/**
+ * Traffic model without a traffic API: a time-of-day profile per kind of place
+ * (city peaks 8–11 and 17–21 IST), corrected by the partner's observed speed when
+ * we have one. Returns a multiplier on free-flow travel time and a label.
+ */
+export function trafficFactor(at: Date = new Date(), kind: 'city' | 'town' | 'hill' | 'village' = 'city', observedKmh?: number | null): { factor: number; level: TrafficLevel; freeFlowKmh: number } {
+  const ist = new Date(at.getTime() + (330 + at.getTimezoneOffset()) * 60_000);
+  const h = ist.getHours() + ist.getMinutes() / 60, wd = ist.getDay();
+  const weekend = wd === 0 || wd === 6;
+  const freeFlow = { city: 22, town: 28, hill: 24, village: 30 }[kind];
+  let factor = 1;
+  if (kind === 'city' || kind === 'town') {
+    const peakAm = h >= 8 && h < 11, peakPm = h >= 17 && h < 21, shoulder = (h >= 7 && h < 8) || (h >= 11 && h < 12) || (h >= 16 && h < 17) || (h >= 21 && h < 22);
+    factor = peakAm || peakPm ? (kind === 'city' ? 1.8 : 1.35) : shoulder ? 1.3 : h >= 23 || h < 6 ? 0.85 : 1.05;
+    if (weekend && (peakAm || peakPm)) factor -= 0.3;
+  } else if (kind === 'hill') {
+    factor = h >= 10 && h < 18 && weekend ? 1.4 : 1.15; // tourist traffic and ghat roads
+  } else {
+    factor = h >= 23 || h < 5 ? 1.2 : 1; // village: night driving is slower, no congestion
+  }
+  // blend with what the partner is actually doing (ignore stops / noise below 3 km/h)
+  if (observedKmh != null && observedKmh >= 3) { const obs = freeFlow / observedKmh; factor = Math.max(0.6, Math.min(3, factor * 0.5 + obs * 0.5)); }
+  const level: TrafficLevel = factor >= 1.55 ? 'heavy' : factor >= 1.2 ? 'moderate' : 'light';
+  return { factor: Math.round(factor * 100) / 100, level, freeFlowKmh: freeFlow };
+}
+
+/** ETA with traffic: free-flow time × factor + a fixed stop/parking allowance. */
+export function etaWithTraffic(km: number, opts: { at?: Date; kind?: 'city' | 'town' | 'hill' | 'village'; observedKmh?: number | null } = {}): { min: number; level: TrafficLevel; factor: number } {
+  const t = trafficFactor(opts.at, opts.kind, opts.observedKmh);
+  const min = Math.max(1, Math.round(2 + ((km / t.freeFlowKmh) * 60) * t.factor));
+  return { min, level: t.level, factor: t.factor };
+}

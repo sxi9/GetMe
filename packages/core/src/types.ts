@@ -205,6 +205,9 @@ export interface Partner {
   online: boolean;
   pos: LatLng | null;
   posAt: string | null;
+  heading: number | null;   // degrees clockwise from north, from the last two fixes
+  speedKmh: number | null;  // observed from the last two fixes
+  trail: LatLng[];          // last few fixes, oldest first (for the map tail)
   area: string;
   verified: boolean;
   activeOrderId: string | null;
