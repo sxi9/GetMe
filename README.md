@@ -20,6 +20,7 @@ Built from the design handoff in `design/` (the clickable prototype, seed data a
 - [Admin panel guide](docs/ADMIN.md): every Ops tab and action, verification checklist, refunds, region tuning, CLI.
 - [Native apps](docs/MOBILE.md): the three Android/iOS apps built from this codebase with Capacitor, background location, FCM push, store release steps.
 - [Roadmap](docs/ROADMAP.md): what modern delivery apps have that GetMe does not yet.
+- [History and decisions](docs/HISTORY.md): why things are built the way they are, with labelled screenshots in `docs/screenshots/`.
 
 ## Run it
 
