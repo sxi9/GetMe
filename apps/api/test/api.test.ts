@@ -143,3 +143,87 @@ test('subscriptions, wallet top-up, addresses, share link, notifications', async
   const addrs = await j('/api/addresses', { body: { label: 'Gym', line: 'Cult, 27th Main' }, token: c.token }); assert.equal(addrs.length, 3);
   const n = await j('/api/notifications', { token: c.token }); assert.ok(n.length > 0);
 });
+
+test('phase 2: GPS address with landmark and leave-at-door, region profile, idempotent replay', async () => {
+  const c = await login('9845012345', 'customer'), p = await login('9986044112', 'partner');
+  const geo = await j('/api/geo/reverse?lat=12.9121&lng=77.6446', { token: c.token });
+  assert.ok(geo.line && geo.region.id === 'blr-city');
+  const hill = await j('/api/geo/region?lat=12.43&lng=75.74', { token: c.token }); assert.equal(hill.id, 'hill'); assert.equal(hill.defaultPay, 'cod');
+  const hits = await j('/api/geo/search?q=koramangala&lat=12.91&lng=77.64', { token: c.token }); assert.ok(hits.length > 0);
+  const addrs = await j('/api/addresses', { body: { label: 'Current location', line: 'Near the temple', landmark: 'blue gate after the bus stop', building: 'Sunrise Residency', tower: 'B', flat: 'B-304', handoff: 'leave_at_door', lat: 12.9125, lng: 77.6450, source: 'gps', accuracyM: 12, makeDefault: true }, token: c.token });
+  assert.equal(addrs[0].handoff, 'leave_at_door'); assert.equal(addrs[0].flat, 'B-304');
+  const key = 'k-' + Date.now();
+  const o = await j('/api/orders', { body: { kind: 'list', items: [{ name: 'Rice 5 kg', qty: 1 }], mode: 'broadcast', pay: 'cod', addressId: addrs[0].id, idempotencyKey: key }, token: c.token });
+  const again = await j('/api/orders', { body: { kind: 'list', items: [{ name: 'Rice 5 kg', qty: 1 }], mode: 'broadcast', pay: 'cod', addressId: addrs[0].id, idempotencyKey: key }, token: c.token });
+  assert.equal(again.id, o.id, 'replayed create returns the same order');
+  assert.equal(o.regionId, 'blr-city'); assert.deepEqual(o.dispatch.radiusKm, [2, 4, 6]);
+  await ev(o.id, { type: 'accept' }, p.token); await ev(o.id, { type: 'reached' }, p.token); await ev(o.id, { type: 'bought', itemCost: 300, receiptUrl: null }, p.token);
+  const r1 = await j(`/api/orders/${o.id}/events`, { body: { type: 'arrived' }, token: p.token, });
+  assert.equal(r1.status, 'arrived');
+  await assert.rejects(ev(o.id, { type: 'complete', otp: '', cashCollected: true }, p.token), /photo/);
+  const done = await ev(o.id, { type: 'complete', otp: '', cashCollected: true, podPhotoUrl: '/uploads/sample-pickup.svg' }, p.token);
+  assert.equal(done.status, 'delivered'); assert.equal(done.podPhotoUrl, '/uploads/sample-pickup.svg');
+});
+
+test('phase 2: runs — announce, join, start, deliver both, trip completes; cancel detaches', async () => {
+  const c = await login('9845012345', 'customer'), lk = await login('9986044116', 'partner');
+  await j('/api/partner/online', { body: { online: true }, token: lk.token });
+  const run = await j('/api/runs', { body: { label: 'Evening market', destination: 'Madiwala market', departAt: new Date(Date.now() + 3600_000).toISOString(), capacity: 3, feePerOrder: 25, communityOnly: false }, token: lk.token });
+  assert.equal(run.status, 'open'); assert.equal(run.seats, 3);
+  const list = await j('/api/runs', { token: c.token }); assert.ok(list.some((r: any) => r.id === run.id));
+  const q = await j('/api/orders/quote', { body: { kind: 'list', items: [{ name: 'Beans', qty: 1 }], mode: 'run', runId: run.id, pay: 'cod' }, token: c.token });
+  assert.equal(q.fee.delivery, 25);
+  const o1 = await j('/api/orders', { body: { kind: 'list', items: [{ name: 'Beans', qty: 1 }], mode: 'run', runId: run.id, pay: 'cod' }, token: c.token });
+  assert.equal(o1.status, 'scheduled'); assert.equal(o1.courierName, 'Lakshmi Devi'); assert.equal(o1.run.id, run.id);
+  const o2 = await j('/api/orders', { body: { kind: 'list', items: [{ name: 'Eggs', qty: 2 }], mode: 'run', runId: run.id, pay: 'cod' }, token: c.token });
+  const mine = await j('/api/partner/runs', { token: lk.token }); assert.equal(mine.find((r: any) => r.id === run.id).orderIds.length, 2);
+  const started = await j(`/api/runs/${run.id}/start`, { body: {}, token: lk.token }); assert.equal(started.status, 'in_progress');
+  let me = await j('/api/me', { token: lk.token }); assert.equal(me.partner.activeRunId, run.id); assert.equal(me.partner.activeOrderId, o1.id);
+  for (const o of [o1, o2]) {
+    if (o.id !== me.partner.activeOrderId) await j(`/api/runs/${run.id}/focus`, { body: { orderId: o.id }, token: lk.token });
+    await ev(o.id, { type: 'reached' }, lk.token); await ev(o.id, { type: 'bought', itemCost: 80, receiptUrl: null }, lk.token); await ev(o.id, { type: 'arrived' }, lk.token);
+    const cust = await j(`/api/orders/${o.id}`, { token: c.token });
+    const d = await ev(o.id, { type: 'complete', otp: cust.otp, cashCollected: true, podPhotoUrl: '/uploads/sample-pickup.svg' }, lk.token); assert.equal(d.status, 'delivered');
+    me = await j('/api/me', { token: lk.token });
+  }
+  const after = await j(`/api/runs/${run.id}`, { token: lk.token }); assert.equal(after.status, 'done');
+  assert.equal(me.partner.activeRunId, null); assert.equal(me.partner.activeOrderId, null);
+  // cancel a run with a waiting order → order re-dispatches by broadcast
+  const run2 = await j('/api/runs', { body: { label: 'Morning run', destination: 'Town', departAt: new Date(Date.now() + 3600_000).toISOString(), feePerOrder: 20 }, token: lk.token });
+  const o3 = await j('/api/orders', { body: { kind: 'list', items: [{ name: 'Milk', qty: 1 }], mode: 'run', runId: run2.id, pay: 'cod' }, token: c.token });
+  await j(`/api/runs/${run2.id}/cancel`, { body: {}, token: lk.token });
+  const o3b = await j(`/api/orders/${o3.id}`, { token: c.token }); assert.equal(o3b.status, 'requesting'); assert.equal(o3b.mode, 'broadcast'); assert.equal(o3b.courierId, null);
+  await ev(o3.id, { type: 'cancel' }, c.token);
+});
+
+test('phase 2: communities, notice board, admin verification, shop approval, refunds, push subscription', async () => {
+  const c = await login('9845012345', 'customer'), a = await login('9000000000', 'admin'), s = await login('9886071234', 'shop');
+  await assert.rejects(login('9000000099', 'admin'), /created by GetMe ops/);
+  const board = await j('/api/community/board', { token: c.token }); assert.equal(board.community.name, 'Sunrise Residency'); assert.ok(board.runs.length >= 1);
+  const an = await j('/api/community/announce', { body: { text: 'Water tanker tomorrow 7 am' }, token: c.token }); assert.equal(an.text, 'Water tanker tomorrow 7 am');
+  const fresh = await login('9000000002', 'customer');
+  await assert.rejects(j('/api/community/board', { token: fresh.token }).then(b => { if (!b) throw new Error('no community'); }), /no community/);
+  const joined = await j('/api/communities/join', { body: { code: 'kakkabe' }, token: fresh.token }); assert.equal(joined.id, 'vil_kakkabe');
+  // admin
+  const ov = await j('/api/admin/overview', { token: a.token });
+  assert.ok(ov.pendingPartners.some((p: any) => p.id === 'suresh')); assert.ok(ov.regions.length === 4);
+  await assert.rejects(j('/api/admin/overview', { token: c.token }), /for admins/);
+  const v = await j('/api/admin/partners/suresh/verify', { body: { decision: 'verified' }, token: a.token }); assert.equal(v.verified, true);
+  const sh = await j('/api/admin/shops/nandini/approve', { body: { approved: false }, token: a.token }); assert.equal(sh.approved, false);
+  assert.ok(!(await j('/api/shops', { token: c.token })).some((x: any) => x.id === 'nandini'), 'unapproved shop hidden from customers');
+  await j('/api/admin/shops/nandini/approve', { body: { approved: true }, token: a.token });
+  // refund flow: deliver an order, report an issue, admin approves → wallet credit
+  const p = await login('9986044112', 'partner');
+  const o = await j('/api/orders', { body: { kind: 'list', items: [{ name: 'Bread', qty: 1 }], mode: 'broadcast', pay: 'upi', addressId: (await j('/api/addresses', { token: c.token })).find((x: any) => x.handoff !== 'leave_at_door')?.id }, token: c.token });
+  await ev(o.id, { type: 'accept' }, p.token); await ev(o.id, { type: 'reached' }, p.token); await ev(o.id, { type: 'bought', itemCost: 40, receiptUrl: null }, p.token); await ev(o.id, { type: 'arrived' }, p.token);
+  const cust = await j(`/api/orders/${o.id}`, { token: c.token }); await ev(o.id, { type: 'complete', otp: cust.otp, cashCollected: false }, p.token);
+  const rep = await ev(o.id, { type: 'report_issue', issue: 'Damaged' }, c.token); assert.equal(rep.refund.status, 'requested');
+  const before = (await j('/api/wallet', { token: c.token })).balance;
+  const res = await j(`/api/admin/refunds/${o.id}`, { body: { approve: true, amount: 30 }, token: a.token }); assert.equal(res.refund.status, 'approved');
+  assert.equal((await j('/api/wallet', { token: c.token })).balance, before + 30);
+  // push
+  const vapid = await j('/api/push/vapid'); assert.ok(vapid.publicKey.length > 20);
+  await j('/api/push/subscribe', { body: { endpoint: 'https://push.example/abc', keys: { p256dh: 'x', auth: 'y' } }, token: c.token });
+  const t = await j('/api/push/test', { body: {}, token: c.token }); assert.equal(t.delivered, 0, 'fake endpoint is pruned, no crash');
+  const regions = await j('/api/admin/regions', { method: 'PUT', body: [{ id: 'hill', surcharge: 1.5 }], token: a.token }); assert.equal(regions.find((r: any) => r.id === 'hill').surcharge, 1.5);
+});

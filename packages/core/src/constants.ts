@@ -1,4 +1,4 @@
-import type { DispatchMode, OrderStatus, PayMethod } from './types.js';
+import type { DispatchMode, OrderStatus, PayMethod, RegionProfile } from './types.js';
 
 export const SERVICE_FEE = 5;
 export const INSURE_FEE = 9;
@@ -40,6 +40,12 @@ export const MODES: { id: DispatchMode; label: string; caption: string }[] = [
   { id: 'broadcast', label: 'Broadcast to partners nearby', caption: 'First partner to accept takes it. Fastest.' },
   { id: 'offers', label: 'Get offers', caption: 'Partners send a price and ETA. You pick one.' },
   { id: 'choose', label: 'Choose a partner', caption: 'Pick from partners nearby by rating and distance.' },
+  { id: 'run', label: 'Join a trip to town', caption: 'A partner is already going. Your order rides along for a flat fee.' },
+];
+export const HANDOFFS: { id: 'in_person' | 'gate' | 'leave_at_door'; label: string; caption: string }[] = [
+  { id: 'in_person', label: 'Hand it to me', caption: 'Partner enters your 4-digit code at the door' },
+  { id: 'gate', label: 'Leave at the gate / security', caption: 'Partner photographs the handover at the gate' },
+  { id: 'leave_at_door', label: 'Leave at the door', caption: 'Partner photographs the delivery at your door' },
 ];
 export const PAYS: { id: PayMethod; label: string }[] = [
   { id: 'cod', label: 'Cash on delivery' },
@@ -49,6 +55,7 @@ export const PAYS: { id: PayMethod; label: string }[] = [
 ];
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
+  scheduled: 'Riding along on a trip',
   requesting: 'Finding a partner',
   counter: 'Extra fee requested',
   to_shop: 'Partner heading to the shop',
@@ -73,6 +80,20 @@ export const P_STEPS: [string, OrderStatus][] = [
   ['Heading to the pickup', 'to_shop'], ['Package picked up', 'shopping'], ['On the way to the receiver', 'to_customer'], ['Arrived at the receiver', 'arrived'], ['Delivered', 'delivered'],
 ];
 export const D_STEPS: [string, OrderStatus][] = [['To shop', 'to_shop'], ['Shopping', 'shopping'], ['To customer', 'to_customer'], ['Handover', 'arrived']];
+
+/** Region profiles: how far to look, how long to wait, what to charge. The API picks one by distance from its center. */
+export const REGIONS: RegionProfile[] = [
+  { id: 'blr-city', name: 'Bengaluru city', kind: 'city', radiusKm: [2, 4, 6], expandEveryMs: 60_000, expireAfterMs: 5 * 60_000, deliveryBase: 25, deliveryPerKm: 15, deliveryMin: 30, deliveryMax: 150, surcharge: 1, defaultPay: 'upi', defaultMode: 'broadcast', center: { lat: 12.9716, lng: 77.5946 }, coverageKm: 25 },
+  { id: 'town', name: 'Small town', kind: 'town', radiusKm: [5, 10, 15], expandEveryMs: 5 * 60_000, expireAfterMs: 60 * 60_000, deliveryBase: 30, deliveryPerKm: 12, deliveryMin: 40, deliveryMax: 300, surcharge: 1, defaultPay: 'cod', defaultMode: 'broadcast', center: { lat: 0, lng: 0 }, coverageKm: 0 },
+  { id: 'hill', name: 'Hill station', kind: 'hill', radiusKm: [8, 15, 25], expandEveryMs: 10 * 60_000, expireAfterMs: 4 * 60 * 60_000, deliveryBase: 40, deliveryPerKm: 14, deliveryMin: 60, deliveryMax: 500, surcharge: 1.25, defaultPay: 'cod', defaultMode: 'run', center: { lat: 12.4244, lng: 75.7382 }, coverageKm: 60 },
+  { id: 'village', name: 'Village', kind: 'village', radiusKm: [10, 20, 30], expandEveryMs: 15 * 60_000, expireAfterMs: 6 * 60 * 60_000, deliveryBase: 30, deliveryPerKm: 10, deliveryMin: 50, deliveryMax: 400, surcharge: 1, defaultPay: 'cod', defaultMode: 'run', center: { lat: 0, lng: 0 }, coverageKm: 0 },
+];
+export const DEFAULT_REGION_ID = 'village'; // outside every named region we assume the sparsest profile
+
+export const PARTNER_TIERS: { id: 'runner' | 'pro'; label: string; caption: string; floatLimit: number }[] = [
+  { id: 'runner', label: 'Community runner', caption: 'Take a few orders when you are going to town anyway. Phone + ID photo.', floatLimit: 1000 },
+  { id: 'pro', label: 'Delivery partner', caption: 'Full-time. Licence, vehicle papers and a bank account.', floatLimit: 2000 },
+];
 
 /** Dispatch timing (ms). */
 export const DISPATCH = {

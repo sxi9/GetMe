@@ -4,7 +4,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import type { LedgerEntry, Message, Notification, Order, Partner, Shop, Subscription, User } from '@getme/core';
+import type { Announcement, Community, LedgerEntry, Message, Notification, Order, Partner, PushSubscriptionRecord, Run, Shop, Subscription, User } from '@getme/core';
 
 export interface Session { token: string; userId: string; createdAt: string }
 export interface Otp { phone: string; code: string; role: string; expiresAt: string }
@@ -38,6 +38,12 @@ export class Db {
       CREATE TABLE IF NOT EXISTS addresses (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS favourites (user_id TEXT NOT NULL, partner_id TEXT NOT NULL, PRIMARY KEY(user_id, partner_id));
       CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, partner_id TEXT NOT NULL, status TEXT NOT NULL, depart_at TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS communities (id TEXT PRIMARY KEY, join_code TEXT NOT NULL UNIQUE, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS announcements (id TEXT PRIMARY KEY, community_id TEXT NOT NULL, at TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, data TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS geocache (k TEXT PRIMARY KEY, v TEXT NOT NULL, at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS sms_log (id TEXT PRIMARY KEY, phone TEXT NOT NULL, text TEXT NOT NULL, at TEXT NOT NULL, provider TEXT NOT NULL);
     `);
   }
   private row<T>(sql: string, ...args: any[]): T | null {
@@ -88,8 +94,9 @@ export class Db {
   ordersByShop(shopId: string, limit = 100) { return this.rows<Order>('SELECT data FROM orders WHERE shop_id=? ORDER BY created_at DESC LIMIT ?', shopId, limit); }
   ordersByStatus(statuses: string[]) { return this.rows<Order>(`SELECT data FROM orders WHERE status IN (${statuses.map(() => '?').join(',')}) ORDER BY created_at ASC`, ...statuses); }
   openOrders() { return this.ordersByStatus(['requesting', 'counter']); }
-  activeOrderForCustomer(customerId: string) { return this.rows<Order>("SELECT data FROM orders WHERE customer_id=? AND status IN ('requesting','counter','to_shop','shopping','to_customer','arrived') ORDER BY created_at DESC LIMIT 1", customerId)[0] ?? null; }
-  activeOrdersForCustomer(customerId: string) { return this.rows<Order>("SELECT data FROM orders WHERE customer_id=? AND status IN ('requesting','counter','to_shop','shopping','to_customer','arrived') ORDER BY created_at DESC", customerId); }
+  ordersByRun(runId: string) { return this.rows<Order>("SELECT data FROM orders WHERE json_extract(data,'$.runId')=? ORDER BY created_at ASC", runId); }
+  activeOrderForCustomer(customerId: string) { return this.activeOrdersForCustomer(customerId)[0] ?? null; }
+  activeOrdersForCustomer(customerId: string) { return this.rows<Order>("SELECT data FROM orders WHERE customer_id=? AND status IN ('scheduled','requesting','counter','to_shop','shopping','to_customer','arrived') ORDER BY created_at DESC", customerId); }
 
   // shop-side status
   getShopStatus(orderId: string): string | null { const r = this.sql.prepare('SELECT status FROM shop_orders WHERE order_id=?').get(orderId) as any; return r?.status ?? null; }
@@ -117,6 +124,36 @@ export class Db {
     const all = this.notifications(userId, 500);
     for (const n of all) if (!n.read) this.sql.prepare('UPDATE notifications SET data=? WHERE id=?').run(JSON.stringify({ ...n, read: true }), n.id);
   }
+
+  // ---- runs
+  putRun(r: Run) { this.sql.prepare('INSERT INTO runs(id,partner_id,status,depart_at,data) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET status=excluded.status,depart_at=excluded.depart_at,data=excluded.data').run(r.id, r.partnerId, r.status, r.departAt, JSON.stringify(r)); }
+  getRun(id: string) { return this.row<Run>('SELECT data FROM runs WHERE id=?', id); }
+  openRuns() { return this.rows<Run>("SELECT data FROM runs WHERE status IN ('open','closed') ORDER BY depart_at ASC"); }
+  runsByPartner(partnerId: string, limit = 50) { return this.rows<Run>('SELECT data FROM runs WHERE partner_id=? ORDER BY depart_at DESC LIMIT ?', partnerId, limit); }
+  allRuns(limit = 200) { return this.rows<Run>('SELECT data FROM runs ORDER BY depart_at DESC LIMIT ?', limit); }
+
+  // ---- communities
+  putCommunity(c: Community) { this.sql.prepare('INSERT INTO communities(id,join_code,data) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET join_code=excluded.join_code,data=excluded.data').run(c.id, c.joinCode.toUpperCase(), JSON.stringify(c)); }
+  getCommunity(id: string) { return this.row<Community>('SELECT data FROM communities WHERE id=?', id); }
+  communityByCode(code: string) { return this.row<Community>('SELECT data FROM communities WHERE join_code=?', code.toUpperCase()); }
+  listCommunities() { return this.rows<Community>('SELECT data FROM communities'); }
+  putAnnouncement(a: Announcement) { this.sql.prepare('INSERT INTO announcements(id,community_id,at,data) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data').run(a.id, a.communityId, a.at, JSON.stringify(a)); }
+  announcements(communityId: string, limit = 50) { return this.rows<Announcement>('SELECT data FROM announcements WHERE community_id=? ORDER BY at DESC LIMIT ?', communityId, limit); }
+  usersInCommunity(communityId: string) { return this.rows<User>("SELECT data FROM users WHERE json_extract(data,'$.communityId')=?", communityId); }
+  usersByRole(role: string) { return this.rows<User>('SELECT data FROM users WHERE role=?', role); }
+  allUsers() { return this.rows<User>('SELECT data FROM users'); }
+
+  // ---- push + sms + geocache
+  putPushSub(s: PushSubscriptionRecord) { this.sql.prepare('INSERT INTO push_subs(endpoint,user_id,data) VALUES(?,?,?) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,data=excluded.data').run(s.endpoint, s.userId, JSON.stringify(s)); }
+  delPushSub(endpoint: string) { this.sql.prepare('DELETE FROM push_subs WHERE endpoint=?').run(endpoint); }
+  pushSubs(userId: string) { return this.rows<PushSubscriptionRecord>('SELECT data FROM push_subs WHERE user_id=?', userId); }
+  logSms(phone: string, text: string, provider: string) { this.sql.prepare('INSERT INTO sms_log(id,phone,text,at,provider) VALUES(?,?,?,?,?)').run(Math.random().toString(36).slice(2), phone, text, new Date().toISOString(), provider); }
+  smsLog(limit = 50) { return this.sql.prepare('SELECT phone,text,at,provider FROM sms_log ORDER BY at DESC LIMIT ?').all(limit) as any[]; }
+  geoGet(k: string): any | null { const r = this.sql.prepare('SELECT v FROM geocache WHERE k=?').get(k) as any; return r ? JSON.parse(r.v) : null; }
+  geoPut(k: string, v: unknown) { this.sql.prepare('INSERT INTO geocache(k,v,at) VALUES(?,?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v,at=excluded.at').run(k, JSON.stringify(v), new Date().toISOString()); }
+  allOrders(limit = 200) { return this.rows<Order>('SELECT data FROM orders ORDER BY created_at DESC LIMIT ?', limit); }
+  liveOrders() { return this.ordersByStatus(['scheduled', 'requesting', 'counter', 'to_shop', 'shopping', 'to_customer', 'arrived']); }
+  refundRequests() { return this.rows<Order>("SELECT data FROM orders WHERE json_extract(data,'$.refund.status')='requested' ORDER BY created_at DESC"); }
 
   // ---- addresses & favourites
   addresses(userId: string) { return this.rows<any>('SELECT data FROM addresses WHERE user_id=?', userId); }

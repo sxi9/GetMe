@@ -29,11 +29,14 @@ export type OrderEventInput =
   | { type: 'check_item'; actor: 'partner'; partnerId: string; index: number; bought: boolean; unavailable?: boolean; substitute?: string | null }
   | { type: 'bought'; actor: 'partner'; partnerId: string; itemCost: number | null; receiptUrl: string | null }
   | { type: 'arrived'; actor: 'partner'; partnerId: string }
-  | { type: 'complete'; actor: 'partner'; partnerId: string; otp: string; cashCollected: boolean }
+  | { type: 'complete'; actor: 'partner'; partnerId: string; otp: string; cashCollected: boolean; podPhotoUrl?: string | null }
   | { type: 'rate_customer'; actor: 'partner'; partnerId: string; stars: number }
   | { type: 'unassign'; actor: 'partner' | 'system'; partnerId: string; reason: string }
+  | { type: 'start_run'; actor: 'partner' | 'system'; partnerId: string }
   // system
   | { type: 'assign'; actor: 'system'; partnerId: string; partnerName: string; price?: number }
+  | { type: 'attach_run'; actor: 'system'; partnerId: string; partnerName: string; runId: string; price: number }
+  | { type: 'detach_run'; actor: 'system'; reason: string }
   | { type: 'expand_radius'; actor: 'system' }
   | { type: 'expire'; actor: 'system' }
   | { type: 'expire_offers'; actor: 'system'; now: string }
@@ -41,11 +44,11 @@ export type OrderEventInput =
 
 export type ApplyResult = { ok: true; order: Order } | { ok: false; code: string; message: string };
 
-const CANCELLABLE: ReadonlySet<OrderStatus> = new Set(['requesting', 'counter', 'to_shop']);
+const CANCELLABLE: ReadonlySet<OrderStatus> = new Set(['scheduled', 'requesting', 'counter', 'to_shop']);
 
 export function isCancellable(o: Order, by: Role | 'system'): boolean {
   if (by === 'customer' || by === 'system') return CANCELLABLE.has(o.status);
-  if (by === 'shop') return o.status === 'requesting' || o.status === 'counter' || o.status === 'to_shop';
+  if (by === 'shop') return o.status === 'scheduled' || o.status === 'requesting' || o.status === 'counter' || o.status === 'to_shop';
   return false;
 }
 
@@ -123,6 +126,7 @@ export function apply(o: Order, ev: OrderEventInput, now: string = new Date().to
       if (o.mode === 'choose' && o.chosenId !== ev.partnerId) return fail('not_chosen', 'This request was sent to another partner');
       if (o.declinedIds.includes(ev.partnerId)) return fail('declined', 'You declined this request');
       if (o.mode === 'offers') return fail('wrong_mode', 'Send an offer instead; the customer picks one');
+      if (o.mode === 'run') return fail('wrong_mode', 'This order is waiting for a trip');
       // accepting while your own counter is pending = accept at the base fee
       return ok(assign(o, ev.partnerId, ev.partnerName, now));
     }
@@ -182,9 +186,14 @@ export function apply(o: Order, ev: OrderEventInput, now: string = new Date().to
     case 'complete': {
       const e = requireCourier(o, ev.partnerId); if (e) return fail('not_courier', e);
       if (o.status !== 'arrived') return fail('bad_state', 'Mark arrived first');
-      if ((ev.otp || '').trim() !== o.otp) return fail('bad_otp', 'Code does not match. Ask the customer for the 4-digit code');
+      const handoff = o.address.handoff ?? 'in_person';
+      if (handoff === 'in_person') {
+        if ((ev.otp || '').trim() !== o.otp) return fail('bad_otp', 'Code does not match. Ask the customer for the 4-digit code');
+      } else if (!ev.podPhotoUrl) {
+        return fail('pod_photo', handoff === 'gate' ? 'Take a photo of the handover at the gate' : 'Take a photo of the delivery at the door');
+      }
       if (o.pay === 'cod' && !ev.cashCollected) return fail('cash', 'Confirm the cash collected first');
-      return ok({ ...stamp(o, 'delivered', now), cashCollected: o.pay === 'cod' });
+      return ok({ ...stamp(o, 'delivered', now), cashCollected: o.pay === 'cod', podPhotoUrl: ev.podPhotoUrl ?? null });
     }
     case 'rate_customer': {
       const e = requireCourier(o, ev.partnerId); if (e) return fail('not_courier', e);
@@ -197,7 +206,20 @@ export function apply(o: Order, ev: OrderEventInput, now: string = new Date().to
       // back to requesting; this partner is marked declined so it re-dispatches to others
       return ok({ ...stamp(o, 'requesting', now), courierId: null, courierName: null, declinedIds: [...o.declinedIds, ev.partnerId], cancelReason: ev.reason });
     }
+    case 'start_run': {
+      if (o.status !== 'scheduled') return fail('bad_state', 'Not waiting on a run');
+      if (o.courierId !== ev.partnerId) return fail('not_courier', 'Not your run');
+      return ok(stamp(o, 'to_shop', now));
+    }
     // ---- system
+    case 'attach_run': {
+      if (!(o.status === 'requesting' && o.mode === 'run' && !o.courierId)) return fail('bad_state', 'Order cannot join a run');
+      return ok({ ...stamp(o, 'scheduled', now), runId: ev.runId, courierId: ev.partnerId, courierName: ev.partnerName, fee: { ...o.fee, delivery: ev.price } });
+    }
+    case 'detach_run': {
+      if (o.status !== 'scheduled') return fail('bad_state', 'Not on a run');
+      return ok({ ...stamp(o, 'requesting', now), runId: null, courierId: null, courierName: null, mode: 'broadcast', cancelReason: ev.reason });
+    }
     case 'assign': {
       if (!open || o.courierId) return fail('taken', 'Already assigned');
       return ok(assign(o, ev.partnerId, ev.partnerName, now, ev.price));
@@ -232,6 +254,7 @@ export function canApply(o: Order, ev: OrderEventInput): boolean {
 /** Index of the current step in a stepper; -1 before assignment. */
 export function stepIndex(status: OrderStatus, steps: [string, OrderStatus][]): number {
   const order: OrderStatus[] = ['to_shop', 'shopping', 'to_customer', 'arrived', 'delivered'];
+  if (status === 'scheduled') return -1;
   const cur = order.indexOf(status);
   if (cur < 0) return -1;
   let idx = -1;

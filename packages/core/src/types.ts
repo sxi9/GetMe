@@ -1,13 +1,14 @@
 // GetMe domain types — shared by the API and the three role apps.
 
-export type Role = 'customer' | 'partner' | 'shop';
+export type Role = 'customer' | 'partner' | 'shop' | 'admin';
 export type OrderKind = 'list' | 'shop' | 'parcel';
-export type DispatchMode = 'broadcast' | 'offers' | 'choose';
+export type DispatchMode = 'broadcast' | 'offers' | 'choose' | 'run';
 export type PayMethod = 'cod' | 'upi' | 'card' | 'wallet';
 export type Vehicle = 'Bike' | 'Scooter' | 'Cycle';
 
 /** Order lifecycle. `expired` is a terminal state reached when no partner is found in time. */
 export type OrderStatus =
+  | 'scheduled'
   | 'requesting'
   | 'counter'
   | 'to_shop'
@@ -24,14 +25,49 @@ export type ShopOrderStatus = 'new' | 'preparing' | 'ready' | 'handed' | 'done' 
 export const TERMINAL: ReadonlySet<OrderStatus> = new Set(['delivered', 'cancelled', 'expired']);
 export const ACTIVE: ReadonlySet<OrderStatus> = new Set(['to_shop', 'shopping', 'to_customer', 'arrived']);
 export const OPEN: ReadonlySet<OrderStatus> = new Set(['requesting', 'counter']);
+/** Assigned but not started: orders attached to a partner's announced run. */
+export const WAITING: ReadonlySet<OrderStatus> = new Set(['scheduled']);
 
 export interface LatLng { lat: number; lng: number }
 
+/** How the partner hands the order over at the door. */
+export type Handoff = 'in_person' | 'gate' | 'leave_at_door';
+
 export interface Address extends LatLng {
   id?: string;
-  label: string;        // Home, Work, …
-  line: string;         // "12, 27th Main, HSR Layout Sector 2"
+  label: string;        // Home, Work, Current location, …
+  line: string;         // "12, 27th Main, HSR Layout Sector 2" — or a landmark description in a village
   area?: string;        // "HSR Layout, Sector 2"
+  landmark?: string;    // "opposite the temple", "blue gate after the bus stop"
+  building?: string;    // apartment / society name
+  tower?: string;       // "Tower B"
+  floor?: string;       // "3rd floor"
+  flat?: string;        // "B-304"
+  gatePhotoUrl?: string | null; // photo of the door / gate so the partner recognises it
+  directions?: string;  // free text or voice-to-text directions for the partner
+  handoff?: Handoff;    // default in_person
+  communityId?: string | null;
+  source?: 'gps' | 'pin' | 'typed' | 'saved';
+  accuracyM?: number;   // GPS accuracy when captured
+}
+
+/** Dispatch and pricing defaults for a kind of place. Snapshotted onto each order. */
+export interface RegionProfile {
+  id: string;
+  name: string;           // "Bengaluru city", "Kodagu hills", "Village"
+  kind: 'city' | 'town' | 'hill' | 'village';
+  radiusKm: number[];     // search radius ladder
+  expandEveryMs: number;
+  expireAfterMs: number;
+  deliveryBase: number;   // ₹
+  deliveryPerKm: number;  // ₹/km
+  deliveryMin: number;
+  deliveryMax: number;
+  surcharge: number;      // multiplier, e.g. 1.25 for hills
+  defaultPay: PayMethod;
+  defaultMode: DispatchMode;
+  center: LatLng;
+  coverageKm: number;     // profile applies within this distance of center
 }
 
 export interface OrderItem {
@@ -73,6 +109,9 @@ export interface Order {
   address: Address;           // drop / customer
   pickup: Address | null;     // parcel pickup
   mode: DispatchMode;
+  runId: string | null;       // attached to a partner's announced run
+  regionId: string;
+  dispatch: { radiusKm: number[]; expandEveryMs: number; expireAfterMs: number };
   pay: PayMethod;
   promoCode: string | null;
   promo: number;              // discount amount
@@ -100,6 +139,8 @@ export interface Order {
   pickupPhotoUrl: string | null;
   otp: string;                // handover code — only ever sent to the customer (and receiver)
   cashCollected: boolean;
+  podPhotoUrl: string | null; // proof of delivery (required for leave_at_door / gate handoff)
+  idempotencyKeys: string[];  // client keys already applied (offline replay safety)
   tip: number;
   rating: { stars: number; tags: string[] } | null;          // customer → partner
   customerRating: number | null;                              // partner → customer
@@ -117,6 +158,7 @@ export interface ShopItem {
   id: string;
   shopId: string;
   name: string;
+  photoUrl?: string | null;
   unit: string;
   price: number;
   cat: string;
@@ -128,6 +170,8 @@ export interface Shop {
   id: string;
   ownerId: string;
   name: string;
+  photoUrl: string | null;
+  approved: boolean;
   cat: string;
   address: string;
   hours: string;
@@ -139,11 +183,20 @@ export interface Shop {
   createdAt: string;
 }
 
+export type PartnerTier = 'runner' | 'pro';
+
 export interface Partner {
   id: string;
   userId: string;
   name: string;
   initials: string;
+  photoUrl: string | null;
+  tier: PartnerTier;          // runner = neighbour doing a market trip (light KYC, low float); pro = full-time
+  documents: { kind: 'id' | 'licence' | 'rc' | 'selfie'; url: string; at: string }[];
+  verification: 'none' | 'pending' | 'verified' | 'rejected';
+  verificationNote: string | null;
+  communityId: string | null;
+  activeRunId: string | null;
   vehicle: Vehicle;
   plate: string;
   rating: number;
@@ -161,6 +214,8 @@ export interface User {
   id: string;
   role: Role;
   name: string;
+  photoUrl?: string | null;
+  communityId?: string | null;
   phone: string;
   email: string | null;
   lang: 'en' | 'kn' | 'hi';
@@ -190,6 +245,52 @@ export interface Subscription {
   nextRunAt: string;
   createdAt: string;
 }
+
+/** A partner's announced trip: "Going to Madikeri market at 9, taking orders till 8." Orders attach to it. */
+export interface Run {
+  id: string;
+  partnerId: string;
+  partnerName: string;
+  label: string;            // "Madikeri market run"
+  destination: string;      // where they are going
+  destinationPos: LatLng | null;
+  from: Address;            // where the run starts / returns to
+  departAt: string;         // ISO
+  cutoffAt: string;         // last time to attach an order
+  capacity: number;         // max orders
+  feePerOrder: number;      // flat delivery fee for the run
+  communityId: string | null; // visible only to a community when set
+  status: 'open' | 'closed' | 'in_progress' | 'done' | 'cancelled';
+  orderIds: string[];
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** An apartment society or a village: members, runs and a notice board. */
+export interface Community {
+  id: string;
+  name: string;
+  kind: 'apartment' | 'village' | 'town';
+  address: string;
+  pos: LatLng;
+  joinCode: string;
+  adminIds: string[];
+  memberCount: number;
+  regionId: string;
+  createdAt: string;
+}
+export interface Announcement {
+  id: string;
+  communityId: string;
+  authorId: string;
+  authorName: string;
+  text: string;
+  runId: string | null;
+  at: string;
+}
+
+export interface PushSubscriptionRecord { userId: string; endpoint: string; keys: { p256dh: string; auth: string }; at: string }
 
 export interface LedgerEntry {
   id: string;
@@ -225,6 +326,8 @@ export type OrderEvent =
   | { type: 'order.cancelled'; orderId: string; by: Role | 'system' }
   | { type: 'order.completed'; orderId: string }
   | { type: 'notify'; title: string; body: string; orderId: string | null }
+  | { type: 'run.updated'; run: Run }
+  | { type: 'announcement'; announcement: Announcement }
   | { type: 'shop.updated'; shop: Shop }
   | { type: 'wallet.updated'; balance: number }
   | { type: 'partner.updated'; partner: Partner };

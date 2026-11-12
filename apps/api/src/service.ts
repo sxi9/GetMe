@@ -2,12 +2,13 @@
 // through the core reducer, is persisted, and fans out as realtime events
 // with role-specific redaction.
 import {
-  ACTIVE, DISPATCH, DomainError, apply, bill, choosablePartners, deliveryFeeForKm, dispatchTick, eligiblePartners, etaMinutes, haversineKm,
-  isDue, itemsTotal, listDeliveryFee, makeFee, parcelDeliveryFee, promoFor, settle, validateParcel, type Address, type LatLng, type Message, type Notification,
-  type Order, type OrderEventInput, type OrderItem, type OrderKind, type Partner, type Role, type Shop, type Subscription, type User,
+  ACTIVE, DISPATCH, DomainError, REGIONS, apply, bill, choosablePartners, deliveryFeeForKm, dispatchTick, eligiblePartners, etaMinutes, haversineKm,
+  isDue, itemsTotal, joinableRuns, listDeliveryFee, makeFee, parcelDeliveryFee, promoFor, regionFor, settle, validateParcel, type Address, type Announcement, type Community, type LatLng, type Message, type Notification,
+  type Order, type OrderEventInput, type OrderItem, type OrderKind, type Partner, type RegionProfile, type Role, type Run, type Shop, type Subscription, type User,
 } from '@getme/core';
 import type { Db } from './db.js';
 import type { Bus } from './bus.js';
+import type { Push, Sms } from './push.js';
 import { now, otp4, token, uid } from './ids.js';
 
 export interface Ctx { user: User; partner: Partner | null; shop: Shop | null }
@@ -19,8 +20,10 @@ export interface CreateOrderInput {
   addressId?: string;               // drop address (customer's saved address)
   address?: Partial<Address>;       // or an inline drop address (parcels)
   pickupAddressId?: string;         // parcels
-  mode: 'broadcast' | 'offers' | 'choose';
+  mode: 'broadcast' | 'offers' | 'choose' | 'run';
+  runId?: string | null;
   pay: 'cod' | 'upi' | 'card' | 'wallet';
+  idempotencyKey?: string;
   promoCode?: string | null;
   when?: 'now' | 'schedule'; slot?: string | null; scheduledAt?: string | null;
   budget?: number | null; subs?: boolean; repeat?: boolean; anon?: boolean; note?: string;
@@ -28,15 +31,36 @@ export interface CreateOrderInput {
 }
 
 export class Service {
+  push: Push | null = null;
+  sms: Sms | null = null;
   constructor(public db: Db, public bus: Bus) {}
+
+  /** Region profiles with admin overrides applied. */
+  regions(): RegionProfile[] {
+    const raw = this.db.getMeta('regions'); if (!raw) return REGIONS;
+    try { const over = JSON.parse(raw) as Partial<RegionProfile>[]; return REGIONS.map(r => ({ ...r, ...(over.find(o => o.id === r.id) ?? {}) })); } catch { return REGIONS; }
+  }
+  regionAt(pos: LatLng) { return regionFor(pos, this.regions()); }
 
   // ---------- helpers
   ctx(user: User): Ctx { return { user, partner: user.role === 'partner' ? this.db.getPartnerByUser(user.id) : null, shop: user.role === 'shop' ? this.db.getShopByOwner(user.id) : null }; }
 
-  notify(userId: string, title: string, body: string, orderId: string | null = null) {
+  /**
+   * In-app record + socket toast, then Web Push to the user's devices. When the
+   * user has no live socket and no push subscription (or `important`), fall back
+   * to SMS so a closed app in a village still hears about it.
+   */
+  notify(userId: string, title: string, body: string, orderId: string | null = null, opts: { important?: boolean; url?: string } = {}) {
     const n: Notification = { id: uid('n_'), userId, title, body, orderId, read: false, at: now() };
     this.db.putNotification(n);
     this.bus.send(userId, { type: 'notify', title, body, orderId });
+    const user = this.db.getUser(userId);
+    if (!user || !user.pushEnabled) return;
+    const url = opts.url ?? (orderId ? `/${user.role}/order/${orderId}` : `/${user.role}`);
+    void (async () => {
+      const delivered = this.push ? await this.push.send(userId, { title, body, url, tag: orderId ?? undefined }) : 0;
+      if (!delivered && (opts.important || !this.bus.online(userId)) && user.phone && this.sms) await this.sms.send(user.phone, `GetMe: ${title}${body ? ' – ' + body : ''}`);
+    })();
   }
 
   partnerUser(partnerId: string | null) { return partnerId ? this.db.getPartner(partnerId)?.userId ?? null : null; }
@@ -49,7 +73,8 @@ export class Service {
     const target: LatLng | null = o.status === 'to_shop' ? (o.shopPos ?? null) : o.status === 'to_customer' ? o.address : null;
     const courierPos = courier?.pos ?? null;
     const etaMin = target && courierPos ? etaMinutes(haversineKm(courierPos, target)) : null;
-    const base = { ...o, bill: bill(o), shopStatus, courierPos, etaMin, courier: courier ? { id: courier.id, name: courier.name, initials: courier.initials, vehicle: courier.vehicle, plate: courier.plate, rating: courier.rating, trips: courier.trips } : null };
+    const run = o.runId ? this.db.getRun(o.runId) : null;
+    const base = { ...o, bill: bill(o), shopStatus, courierPos, etaMin, run: run ? { id: run.id, label: run.label, destination: run.destination, departAt: run.departAt, status: run.status } : null, courier: courier ? { id: courier.id, name: courier.name, initials: courier.initials, vehicle: courier.vehicle, plate: courier.plate, rating: courier.rating, trips: courier.trips } : null };
     if (role === 'customer') return base;
     const { otp, ...noOtp } = base;
     const customerName = o.anon ? 'Customer' : o.customerName;
@@ -97,6 +122,9 @@ export class Service {
   // ---------- quotes & creation
   quote(ctx: Ctx, input: CreateOrderInput) {
     const addr = this.resolveAddress(ctx, input);
+    const region = this.regionAt(addr);
+    const run = input.runId ? this.db.getRun(input.runId) : null;
+    if (input.mode === 'run') { if (!run) throw new DomainError('no_run', 'That trip is no longer available'); if (!joinableRuns([run], addr, ctx.user.communityId, Date.now()).length) throw new DomainError('run_closed', 'That trip is full or closed'); }
     const shop = input.shopId ? this.db.getShop(input.shopId) : null;
     if (input.shopId && !shop) throw new DomainError('no_shop', 'Shop not found');
     let items: OrderItem[] = [];
@@ -115,17 +143,18 @@ export class Service {
         if (it.qty > ci.stock) throw new DomainError('oos', `Only ${ci.stock} × ${ci.name} left`);
         items.push({ name: ci.name, qty: it.qty, unit: ci.unit, price: ci.price, itemId: ci.id });
       }
-      delivery = deliveryFeeForKm(haversineKm(shop.pos, addr));
+      delivery = deliveryFeeForKm(haversineKm(shop.pos, addr), 1, region);
     } else {
       items = (input.items ?? []).map(i => ({ name: i.name.trim(), qty: Math.max(1, Math.round(i.qty || 1)), unit: '', price: null })).filter(i => i.name);
-      delivery = listDeliveryFee(shop ? haversineKm(shop.pos, addr) : null);
+      delivery = listDeliveryFee(shop ? haversineKm(shop.pos, addr) : null, 1, region);
     }
+    if (run) delivery = run.feePerOrder;
     if (!items.length) throw new DomainError('empty', 'Add at least one item');
     const total = itemsTotal(items);
     const promo = promoFor(input.promoCode, input.kind, delivery);
     const fee = makeFee(delivery, insure);
     const draft = { fee, promo: promo.discount, itemCost: null, itemsTotal: input.kind === 'parcel' ? 0 : total, kind: input.kind };
-    return { items, itemsTotal: total, fee, promo: promo.discount, promoMsg: promo.reason || (promo.discount ? `₹${promo.discount} off delivery applied` : ''), bill: bill(draft), shop: shop ? { id: shop.id, name: shop.name, distKm: haversineKm(shop.pos, addr) } : null, address: addr };
+    return { items, itemsTotal: total, fee, promo: promo.discount, promoMsg: promo.reason || (promo.discount ? `₹${promo.discount} off delivery applied` : ''), bill: bill(draft), shop: shop ? { id: shop.id, name: shop.name, distKm: haversineKm(shop.pos, addr) } : null, address: addr, region: { id: region.id, name: region.name, kind: region.kind, defaultPay: region.defaultPay, defaultMode: region.defaultMode }, run: run ? { id: run.id, label: run.label, departAt: run.departAt, feePerOrder: run.feePerOrder } : null };
   }
 
   private resolveAddress(ctx: Ctx, input: CreateOrderInput): Address {
@@ -134,10 +163,11 @@ export class Service {
       if (!a) throw new DomainError('no_address', 'Address not found');
       return a;
     }
-    if (input.address?.line) {
-      // inline address (parcel drop). Geocoding is a stub: unknown drops sit a little north-west of the pickup.
+    if (input.address?.line || (input.address?.lat != null && input.address?.lng != null)) {
+      // inline address: GPS / pin / typed. Without coordinates (typed only) the drop sits a little north-west of home until geocoded.
       const home = this.db.addresses(ctx.user.id)[0];
-      return { id: undefined, label: input.address.label ?? 'Drop', line: input.address.line, area: input.address.area, lat: input.address.lat ?? (home?.lat ?? 12.9121) + 0.02, lng: input.address.lng ?? (home?.lng ?? 77.6446) - 0.02 };
+      const a = input.address;
+      return { ...a, id: a.id, label: a.label ?? 'Drop', line: a.line || a.landmark || 'Pinned location', area: a.area, lat: a.lat ?? (home?.lat ?? 12.9121) + 0.02, lng: a.lng ?? (home?.lng ?? 77.6446) - 0.02, handoff: a.handoff ?? 'in_person' } as Address;
     }
     const first = this.db.addresses(ctx.user.id)[0];
     if (!first) throw new DomainError('no_address', 'Add a delivery address first');
@@ -150,7 +180,9 @@ export class Service {
       const err = validateParcel({ drop: input.address?.line, receiverName: input.receiver?.name, receiverPhone: input.receiver?.phone });
       if (err) throw new DomainError('invalid', err);
     }
+    if (input.idempotencyKey) { const prev = this.db.getMeta('idem:' + input.idempotencyKey); if (prev) { const o = this.db.getOrder(prev); if (o) return o; } }
     const q = this.quote(ctx, input);
+    const region = this.regionAt(q.address);
     if (input.pay === 'wallet' && this.db.balance(ctx.user.id) < q.bill.fees) throw new DomainError('wallet_low', 'Wallet balance does not cover the delivery fees. Add money or pick another method');
     const pickup = input.kind === 'parcel' ? (input.pickupAddressId ? this.db.addresses(ctx.user.id).find(x => x.id === input.pickupAddressId) : this.db.addresses(ctx.user.id)[0]) ?? null : null;
     const t = now();
@@ -161,15 +193,17 @@ export class Service {
       shopId: shop?.id ?? null, shopName: input.kind === 'parcel' ? `Pickup · ${pickup?.label ?? 'Home'}` : shop?.name ?? 'Any nearby shop',
       shopPos: input.kind === 'parcel' ? (pickup ? { lat: pickup.lat, lng: pickup.lng } : null) : shop?.pos ?? null,
       items: q.items, itemsTotal: input.kind === 'parcel' ? 0 : q.itemsTotal, address: q.address, pickup,
-      mode: input.mode, pay: input.pay, promoCode: q.promo ? (input.promoCode ?? '').toUpperCase() : null, promo: q.promo,
+      mode: input.mode, runId: null, regionId: region.id, dispatch: { radiusKm: region.radiusKm, expandEveryMs: region.expandEveryMs, expireAfterMs: region.expireAfterMs },
+      pay: input.pay, promoCode: q.promo ? (input.promoCode ?? '').toUpperCase() : null, promo: q.promo,
       when: input.when ?? 'now', slot: input.slot ?? null, scheduledAt: input.when === 'schedule' ? (input.scheduledAt ?? slotToIso(input.slot)) : null,
       budget: input.budget ?? null, subs: input.subs ?? true, repeat: !!input.repeat, note: input.note ?? '', receiver: input.receiver ?? null,
       pkType: input.pkType ?? null, pkSize: input.pkSize ?? null,
       status: 'requesting', courierId: null, courierName: null, chosenId: null, offers: [], counter: null, declinedIds: [], seenIds: [],
-      fee: q.fee, itemCost: null, receiptUrl: null, pickupPhotoUrl: null, otp: otp4(), cashCollected: false, tip: 0, rating: null, customerRating: null,
-      issue: null, refund: null, cancelReason: null, cancelledBy: null, times: { requesting: t }, searchRadiusKm: DISPATCH.radiusKm[0], createdAt: t, updatedAt: t,
+      fee: q.fee, itemCost: null, receiptUrl: null, pickupPhotoUrl: null, otp: otp4(), cashCollected: false, podPhotoUrl: null, idempotencyKeys: [], tip: 0, rating: null, customerRating: null,
+      issue: null, refund: null, cancelReason: null, cancelledBy: null, times: { requesting: t }, searchRadiusKm: region.radiusKm[0], createdAt: t, updatedAt: t,
     };
     this.db.putOrder(o);
+    if (input.idempotencyKey) this.db.setMeta('idem:' + input.idempotencyKey, o.id);
     if (o.kind === 'shop' && shop) {
       this.db.putShopStatus(o.id, shop.id, 'new');
       this.notify(shop.ownerId, 'New order', `${o.id} from ${o.anon ? 'a customer' : o.customerName.split(' ')[0]} · ${o.items.length} item${o.items.length > 1 ? 's' : ''}`, o.id);
@@ -181,7 +215,9 @@ export class Service {
     }
     if (o.repeat && o.kind !== 'parcel') this.createSubscription(ctx, o);
     this.bus.send(o.customerId, { type: 'order.created', order: this.view(o, 'customer') });
+    if (o.mode === 'run' && q.run) return this.attachToRun(o, q.run.id);
     if (isDue(o)) this.announce(o);
+    if (o.kind === 'parcel' && o.receiver?.phone && this.sms) void this.sms.send(o.receiver.phone, `GetMe: ${o.customerName.split(' ')[0]} is sending you a package (${o.id}). Handover code: ${o.otp}. Track: ${process.env.PUBLIC_URL ?? ''}/track/${this.shareLink(ctx, o.id)}`);
     return o;
   }
 
@@ -197,10 +233,12 @@ export class Service {
 
   // ---------- events
   /** Apply a machine event on behalf of a user, with side effects. */
-  event(ctx: Ctx, orderId: string, ev: OrderEventInput): Order {
+  event(ctx: Ctx, orderId: string, ev: OrderEventInput, idempotencyKey?: string): Order {
     const o = this.db.getOrder(orderId);
     if (!o) throw new DomainError('not_found', 'Order not found');
+    if (idempotencyKey && o.idempotencyKeys.includes(idempotencyKey)) return o; // offline replay of an event already applied
     const role = ctx.user.role;
+    if (role === 'admin') { const r = apply(o, { ...ev, actor: ev.type === 'cancel' ? 'system' : ev.actor } as OrderEventInput); if (!r.ok) throw new DomainError(r.code, r.message); return this.commit(o, r.order, ev); }
     // authorisation: actors must match the caller's role, and partners must identify as themselves
     if (ev.actor !== role && !(ev.actor === 'system' && role === 'partner' && ev.type === 'unassign')) throw new DomainError('forbidden', 'Not allowed');
     if (role === 'customer' && o.customerId !== ctx.user.id) throw new DomainError('forbidden', 'Not your order');
@@ -215,7 +253,8 @@ export class Service {
     if (role === 'shop' && ev.type === 'cancel' && o.shopId !== ctx.shop?.id) throw new DomainError('forbidden', 'Not your order');
     const r = apply(o, ev);
     if (!r.ok) throw new DomainError(r.code, r.message);
-    return this.commit(o, r.order, ev);
+    const next = idempotencyKey ? { ...r.order, idempotencyKeys: [...r.order.idempotencyKeys.slice(-20), idempotencyKey] } : r.order;
+    return this.commit(o, next, ev);
   }
 
   /** Persist a transition and fan out its side effects. */
@@ -243,13 +282,14 @@ export class Service {
       const msg: Partial<Record<string, [string, string]>> = {
         shopping: [parcel ? `${cn} reached the pickup point` : `${cn} reached ${next.shopId ? next.shopName : 'the shop'}`, parcel ? 'Collecting your package' : 'Buying your items now'],
         to_customer: [parcel ? 'Package picked up' : `Items bought · ₹${next.itemCost ?? 0}`, parcel ? (next.pickupPhotoUrl ? 'Photo attached' : 'On the way to the receiver') : (next.receiptUrl ? 'Receipt attached · on the way' : 'On the way to you')],
-        arrived: [`${cn} has arrived`, parcel ? 'Share the handover code with the receiver' : `Share your handover code ${next.otp}`],
+        arrived: [`${cn} has arrived`, parcel ? 'Share the handover code with the receiver' : (next.address.handoff ?? 'in_person') === 'in_person' ? `Share your handover code ${next.otp}` : 'Leaving it as you asked, with a photo'],
         delivered: ['Delivered', 'Rate your experience'],
         expired: ['No partner found', 'Nobody accepted in time. Try again or widen your options'],
         counter: [`${first(next.counter?.partnerName ?? 'Partner')} asks for ₹${next.counter?.amount} extra`, next.counter?.reason ?? ''],
       };
       const m = msg[next.status];
-      if (m) this.notify(next.customerId, m[0], m[1], next.id);
+      if (m) this.notify(next.customerId, m[0], m[1], next.id, { important: next.status === 'arrived' || next.status === 'delivered' || next.status === 'expired' });
+      if (next.runId && (next.status === 'delivered' || next.status === 'cancelled')) this.maybeFinishRun(next.runId);
       if (next.status === 'to_customer') this.pushMessage(next, 'partner', 'text', parcel ? 'Picked up the package. On my way to the receiver.' : 'Got everything on the list. On my way.');
       if (next.kind === 'shop' && next.shopId) {
         const map: Partial<Record<string, string>> = { to_customer: 'handed', delivered: 'done', cancelled: 'cancelled', expired: 'cancelled' };
@@ -266,7 +306,7 @@ export class Service {
     // release the partner on terminal / unassign
     if (prev.courierId && (next.status === 'cancelled' || next.status === 'expired' || next.status === 'delivered' || !next.courierId)) {
       const p = this.db.getPartner(prev.courierId);
-      if (p && p.activeOrderId === next.id) this.db.putPartner({ ...p, activeOrderId: null, trips: next.status === 'delivered' ? p.trips + 1 : p.trips });
+      if (p && p.activeOrderId === next.id) this.db.putPartner({ ...p, activeOrderId: p.activeRunId ? this.nextRunOrderId(p.activeRunId, next.id) : null, trips: next.status === 'delivered' ? p.trips + 1 : p.trips });
     }
     if (next.status === 'cancelled') {
       const cu = this.partnerUser(prev.courierId);
@@ -275,7 +315,7 @@ export class Service {
       if (next.cancelledBy !== 'customer') this.notify(next.customerId, `Order ${next.id} cancelled`, next.cancelReason ?? '', next.id);
     }
     if (next.status === 'expired' && next.kind === 'shop' && next.shopId) this.restock(next);
-    if (next.status === 'delivered' && prev.status !== 'delivered') this.settleOrder(next);
+    if (next.status === 'delivered' && prev.status !== 'delivered') { this.settleOrder(next); if (next.kind === 'parcel' && next.receiver?.phone && this.sms) void this.sms.send(next.receiver.phone, `GetMe: package ${next.id} delivered${next.podPhotoUrl ? ' (photo on the tracking link)' : ''}.`); }
     if (ev.type === 'tip' && next.tip !== prev.tip) this.applyTip(prev, next);
     if (ev.type === 'rate' && next.rating && next.courierId) this.applyRating(next);
     if (ev.type === 'report_issue') this.notify(next.customerId, 'Reported: ' + next.issue, 'Refund review within 24 h', next.id);
@@ -455,6 +495,191 @@ export class Service {
     return { orders: todayDone.length, revenue: todayDone.reduce((a, o) => a + (o.itemsTotal ?? 0), 0), avgPrep, week, labels, top, split: totalDone ? Math.round((listsBought / totalDone) * 100) : 62, settlement: this.db.balance(shop.ownerId), lowStock: shop.items.filter(i => i.stock <= 3).length };
   }
 
+  // ---------- runs (a partner's announced trip; orders ride along)
+  createRun(ctx: Ctx, input: { label: string; destination: string; destinationPos?: LatLng | null; departAt: string; cutoffAt?: string; capacity?: number; feePerOrder: number; communityOnly?: boolean; note?: string; fromAddress?: Partial<Address> }): Run {
+    const p = ctx.partner; if (!p) throw new DomainError('forbidden', 'Partners only');
+    if (!p.verified) throw new DomainError('unverified', 'Finish verification before announcing a trip');
+    if (p.activeRunId) throw new DomainError('busy', 'Finish your current trip first');
+    if (!(input.label || '').trim() || !(input.destination || '').trim()) throw new DomainError('invalid', 'Give the trip a name and a destination');
+    const depart = Date.parse(input.departAt); if (!(depart > Date.now())) throw new DomainError('invalid', 'Departure must be in the future');
+    const fee = Math.round(Number(input.feePerOrder)); if (!(fee >= 10)) throw new DomainError('invalid', 'Fee per order must be at least ₹10');
+    const t = now();
+    const from: Address = { label: 'Start', line: input.fromAddress?.line ?? p.area, lat: input.fromAddress?.lat ?? p.pos?.lat ?? 12.9121, lng: input.fromAddress?.lng ?? p.pos?.lng ?? 77.6446, area: input.fromAddress?.area };
+    const run: Run = { id: uid('run_'), partnerId: p.id, partnerName: p.name, label: input.label.trim(), destination: input.destination.trim(), destinationPos: input.destinationPos ?? null, from, departAt: new Date(depart).toISOString(), cutoffAt: input.cutoffAt ? new Date(input.cutoffAt).toISOString() : new Date(depart - 30 * 60_000).toISOString(), capacity: Math.max(1, Math.min(30, Math.round(Number(input.capacity) || 6))), feePerOrder: fee, communityId: input.communityOnly ? (ctx.user.communityId ?? null) : null, status: 'open', orderIds: [], note: (input.note ?? '').trim(), createdAt: t, updatedAt: t };
+    this.db.putRun(run);
+    this.broadcastRun(run);
+    // tell the community (notice board) and nearby customers
+    const audience = run.communityId ? this.db.usersInCommunity(run.communityId) : this.db.usersByRole('customer').filter(u => { const a = this.db.addresses(u.id)[0]; return a && haversineKm(a, from) <= 15; });
+    for (const u of audience) if (u.id !== ctx.user.id) this.notify(u.id, `${p.name.split(' ')[0]} is going to ${run.destination}`, `Leaves ${new Date(run.departAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })} · ₹${fee} per order · add your list`, null, { url: `/customer/runs/${run.id}` });
+    if (run.communityId) this.announce_(run.communityId, ctx.user, `Going to ${run.destination} at ${new Date(run.departAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}. Add your list to my trip.`, run.id);
+    return run;
+  }
+  broadcastRun(run: Run) {
+    const ids = new Set<string>([this.db.getPartner(run.partnerId)?.userId ?? '']);
+    for (const id of run.orderIds) { const o = this.db.getOrder(id); if (o) ids.add(o.customerId); }
+    if (run.communityId) for (const u of this.db.usersInCommunity(run.communityId)) ids.add(u.id);
+    ids.delete('');
+    this.bus.sendMany(ids, { type: 'run.updated', run });
+  }
+  runsFor(ctx: Ctx, pos?: LatLng) {
+    const at = pos ?? this.db.addresses(ctx.user.id)[0] ?? { lat: 12.9121, lng: 77.6446 };
+    return joinableRuns(this.db.openRuns(), at, ctx.user.communityId, Date.now()).map(r => this.runView(r, ctx));
+  }
+  runView(r: Run, ctx?: Ctx) {
+    const p = this.db.getPartner(r.partnerId);
+    const orders = r.orderIds.map(id => this.db.getOrder(id)).filter(Boolean) as Order[];
+    const mine = ctx?.user.role === 'customer' ? orders.filter(o => o.customerId === ctx.user.id).map(o => o.id) : [];
+    return { ...r, partner: p ? { id: p.id, name: p.name, initials: p.initials, photoUrl: p.photoUrl, rating: p.rating, trips: p.trips, vehicle: p.vehicle, tier: p.tier } : null, seats: r.capacity - r.orderIds.length, myOrderIds: mine, orders: ctx?.user.role === 'partner' || ctx?.user.role === 'admin' ? orders.map(o => this.view(o, 'partner', ctx)) : undefined };
+  }
+  attachToRun(o: Order, runId: string): Order {
+    const run = this.db.getRun(runId); if (!run) throw new DomainError('no_run', 'Trip not found');
+    const p = this.db.getPartner(run.partnerId)!;
+    const r = apply(o, { type: 'attach_run', actor: 'system', partnerId: p.id, partnerName: p.name, runId, price: run.feePerOrder });
+    if (!r.ok) throw new DomainError(r.code, r.message);
+    const next = this.commit(o, r.order, { type: 'attach_run', actor: 'system', partnerId: p.id, partnerName: p.name, runId, price: run.feePerOrder });
+    const updated = { ...run, orderIds: [...run.orderIds, o.id], updatedAt: now() };
+    this.db.putRun(updated); this.broadcastRun(updated);
+    this.notify(p.userId, `${o.anon ? 'A neighbour' : o.customerName.split(' ')[0]} joined your trip`, `${o.items.length} item${o.items.length > 1 ? 's' : ''} · ${run.orderIds.length + 1} of ${run.capacity} seats`, o.id, { url: `/partner/runs/${run.id}` });
+    this.notify(o.customerId, `You are on ${p.name.split(' ')[0]}'s trip`, `Leaves ${new Date(run.departAt).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })} · ₹${run.feePerOrder} delivery`, o.id);
+    return next;
+  }
+  /** Partner starts the trip: every attached order becomes an active job, worked one at a time. */
+  startRun(ctx: Ctx, runId: string): Run {
+    const run = this.db.getRun(runId); const p = ctx.partner!;
+    if (!run || run.partnerId !== p.id) throw new DomainError('not_found', 'Trip not found');
+    if (run.status !== 'open' && run.status !== 'closed') throw new DomainError('bad_state', 'Trip already started');
+    const orders = run.orderIds.map(id => this.db.getOrder(id)!).filter(o => o.status === 'scheduled');
+    if (!orders.length) { const done = { ...run, status: 'cancelled' as const, updatedAt: now() }; this.db.putRun(done); this.broadcastRun(done); throw new DomainError('empty', 'Nobody joined this trip. It has been cancelled'); }
+    for (const o of orders) { const r = apply(o, { type: 'start_run', actor: 'partner', partnerId: p.id }); if (r.ok) this.commit(o, r.order, { type: 'start_run', actor: 'partner', partnerId: p.id }); }
+    const started = { ...run, status: 'in_progress' as const, updatedAt: now() };
+    this.db.putRun(started);
+    this.db.putPartner({ ...this.db.getPartner(p.id)!, activeRunId: run.id, activeOrderId: orders[0].id });
+    this.bus.send(p.userId, { type: 'partner.updated', partner: this.db.getPartner(p.id)! });
+    this.broadcastRun(started);
+    return started;
+  }
+  nextRunOrderId(runId: string, justFinished: string): string | null {
+    const run = this.db.getRun(runId); if (!run) return null;
+    const next = run.orderIds.map(id => this.db.getOrder(id)!).find(o => o.id !== justFinished && ACTIVE.has(o.status));
+    return next?.id ?? null;
+  }
+  /** Partner switches which order of the run they are working on. */
+  focusRunOrder(ctx: Ctx, runId: string, orderId: string) {
+    const run = this.db.getRun(runId); const p = ctx.partner!;
+    if (!run || run.partnerId !== p.id || !run.orderIds.includes(orderId)) throw new DomainError('not_found', 'Not on this trip');
+    this.db.putPartner({ ...this.db.getPartner(p.id)!, activeOrderId: orderId });
+    this.bus.send(p.userId, { type: 'partner.updated', partner: this.db.getPartner(p.id)! });
+  }
+  maybeFinishRun(runId: string) {
+    const run = this.db.getRun(runId); if (!run || run.status !== 'in_progress') return;
+    const open = run.orderIds.map(id => this.db.getOrder(id)!).filter(o => ACTIVE.has(o.status) || o.status === 'scheduled');
+    if (open.length) return;
+    const done = { ...run, status: 'done' as const, updatedAt: now() };
+    this.db.putRun(done);
+    const p = this.db.getPartner(run.partnerId)!;
+    this.db.putPartner({ ...p, activeRunId: null, activeOrderId: null });
+    this.bus.send(p.userId, { type: 'partner.updated', partner: this.db.getPartner(p.id)! });
+    this.notify(p.userId, 'Trip complete', `${run.label} · ${run.orderIds.length} orders`, null, { url: '/partner/earnings' });
+    this.broadcastRun(done);
+  }
+  cancelRun(ctx: Ctx, runId: string, reason = 'Trip cancelled by the partner'): Run {
+    const run = this.db.getRun(runId);
+    if (!run || (ctx.user.role !== 'admin' && run.partnerId !== ctx.partner?.id)) throw new DomainError('not_found', 'Trip not found');
+    if (run.status === 'in_progress' || run.status === 'done') throw new DomainError('bad_state', 'Trip already started');
+    for (const id of run.orderIds) {
+      const o = this.db.getOrder(id); if (!o || o.status !== 'scheduled') continue;
+      const r = apply(o, { type: 'detach_run', actor: 'system', reason });
+      if (r.ok) { const next = this.commit(o, r.order, { type: 'detach_run', actor: 'system', reason }); this.notify(o.customerId, 'Trip cancelled', 'Your order is now being sent to partners nearby instead', o.id, { important: true }); this.announce(next); }
+    }
+    const cancelled = { ...run, status: 'cancelled' as const, updatedAt: now() };
+    this.db.putRun(cancelled); this.broadcastRun(cancelled);
+    return cancelled;
+  }
+  closeRun(ctx: Ctx, runId: string): Run {
+    const run = this.db.getRun(runId); if (!run || run.partnerId !== ctx.partner?.id) throw new DomainError('not_found', 'Trip not found');
+    if (run.status !== 'open') throw new DomainError('bad_state', 'Trip is not open');
+    const closed = { ...run, status: 'closed' as const, updatedAt: now() }; this.db.putRun(closed); this.broadcastRun(closed); return closed;
+  }
+
+  // ---------- communities (apartment societies, villages)
+  createCommunity(ctx: Ctx, input: { name: string; kind: Community['kind']; address: string; pos?: LatLng | null }): Community {
+    if (!(input.name || '').trim()) throw new DomainError('invalid', 'Give the community a name');
+    const pos = input.pos ?? this.db.addresses(ctx.user.id)[0] ?? { lat: 12.9121, lng: 77.6446 };
+    const code = (input.name.replace(/[^a-z]/gi, '').slice(0, 6).toUpperCase() || 'GETME') + String(Math.floor(100 + Math.random() * 900));
+    const c: Community = { id: uid('com_'), name: input.name.trim(), kind: input.kind ?? 'apartment', address: (input.address ?? '').trim(), pos: { lat: pos.lat, lng: pos.lng }, joinCode: code, adminIds: [ctx.user.id], memberCount: 1, regionId: this.regionAt(pos).id, createdAt: now() };
+    this.db.putCommunity(c);
+    this.db.putUser({ ...ctx.user, communityId: c.id });
+    return c;
+  }
+  joinCommunity(ctx: Ctx, code: string): Community {
+    const c = this.db.communityByCode((code || '').trim()); if (!c) throw new DomainError('not_found', 'No community with that code');
+    if (ctx.user.communityId === c.id) return c;
+    this.db.putUser({ ...ctx.user, communityId: c.id });
+    if (ctx.partner) this.db.putPartner({ ...ctx.partner, communityId: c.id });
+    const updated = { ...c, memberCount: this.db.usersInCommunity(c.id).length }; this.db.putCommunity(updated);
+    return updated;
+  }
+  leaveCommunity(ctx: Ctx) { if (!ctx.user.communityId) return; const c = this.db.getCommunity(ctx.user.communityId); this.db.putUser({ ...ctx.user, communityId: null }); if (ctx.partner) this.db.putPartner({ ...ctx.partner, communityId: null }); if (c) this.db.putCommunity({ ...c, memberCount: Math.max(0, c.memberCount - 1) }); }
+  board(ctx: Ctx) {
+    const cid = ctx.user.communityId; if (!cid) return null;
+    const c = this.db.getCommunity(cid); if (!c) return null;
+    const runs = this.db.openRuns().filter(r => r.communityId === cid || haversineKm(r.from, c.pos) <= 5).map(r => this.runView(r, ctx));
+    return { community: c, announcements: this.db.announcements(cid), runs, members: this.db.usersInCommunity(cid).map(u => ({ id: u.id, name: u.name, role: u.role, photoUrl: u.photoUrl ?? null })) };
+  }
+  announce_(communityId: string, author: User, text: string, runId: string | null = null): Announcement {
+    const a: Announcement = { id: uid('an_'), communityId, authorId: author.id, authorName: author.name, text: text.trim(), runId, at: now() };
+    this.db.putAnnouncement(a);
+    this.bus.sendMany(this.db.usersInCommunity(communityId).map(u => u.id), { type: 'announcement', announcement: a });
+    return a;
+  }
+  postAnnouncement(ctx: Ctx, text: string): Announcement {
+    if (!ctx.user.communityId) throw new DomainError('no_community', 'Join a community first');
+    if (!(text || '').trim()) throw new DomainError('invalid', 'Write something');
+    const a = this.announce_(ctx.user.communityId, ctx.user, text);
+    for (const u of this.db.usersInCommunity(ctx.user.communityId)) if (u.id !== ctx.user.id) this.notify(u.id, ctx.user.name.split(' ')[0] + ' posted on the notice board', text.slice(0, 80), null, { url: `/${u.role}/community` });
+    return a;
+  }
+
+  // ---------- admin
+  adminOverview() {
+    const partners = this.db.listPartners();
+    return {
+      live: this.db.liveOrders().map(o => ({ ...this.view(o, 'customer'), otp: undefined })),
+      pendingPartners: partners.filter(p => p.verification === 'pending'),
+      pendingShops: this.db.listShops().filter(s => !s.approved),
+      refunds: this.db.refundRequests().map(o => this.view(o, 'customer')),
+      partnersOnline: partners.filter(p => p.online).length, partners: partners.length,
+      ordersToday: this.db.allOrders(500).filter(o => o.createdAt.slice(0, 10) === now().slice(0, 10)).length,
+      runs: this.db.openRuns().map(r => this.runView(r)),
+      regions: this.regions(), sms: this.db.smsLog(20), communities: this.db.listCommunities(),
+    };
+  }
+  verifyPartner(partnerId: string, decision: 'verified' | 'rejected', note = '') {
+    const p = this.db.getPartner(partnerId); if (!p) throw new DomainError('not_found', 'Partner not found');
+    const next = { ...p, verification: decision, verified: decision === 'verified', verificationNote: note || null };
+    this.db.putPartner(next);
+    this.bus.send(p.userId, { type: 'partner.updated', partner: next });
+    this.notify(p.userId, decision === 'verified' ? 'You are verified' : 'Verification not approved', decision === 'verified' ? 'Go online to start taking requests' : (note || 'Upload clearer documents and try again'), null, { important: true, url: '/partner/profile' });
+    return next;
+  }
+  approveShop(shopId: string, approved: boolean) {
+    const s = this.db.getShop(shopId); if (!s) throw new DomainError('not_found', 'Shop not found');
+    const next = { ...s, approved }; this.db.putShop(next); this.bus.send(s.ownerId, { type: 'shop.updated', shop: next });
+    this.notify(s.ownerId, approved ? 'Your shop is live on GetMe' : 'Shop listing paused', approved ? 'Customers nearby can now order from your catalogue' : 'Contact support for details', null, { important: true });
+    return next;
+  }
+  resolveRefund(orderId: string, approve: boolean, amount?: number) {
+    const o = this.db.getOrder(orderId); if (!o || !o.refund) throw new DomainError('not_found', 'No refund request on this order');
+    const amt = approve ? Math.max(0, Math.round(amount ?? o.refund.amount)) : 0;
+    const next = { ...o, refund: { amount: amt, status: approve ? 'approved' as const : 'rejected' as const }, updatedAt: now() };
+    this.db.putOrder(next);
+    if (approve && amt > 0) { this.db.putLedger({ id: uid('l_'), userId: o.customerId, orderId: o.id, kind: 'refund', amount: amt, note: `Refund ${o.id} · ${o.issue}`, at: now() }); this.bus.send(o.customerId, { type: 'wallet.updated', balance: this.db.balance(o.customerId) }); }
+    this.notify(o.customerId, approve ? `Refund of ₹${amt} approved` : 'Refund request reviewed', approve ? 'Added to your GetMe wallet' : 'We could not approve this request. Reply to this message to talk to support', o.id, { important: true });
+    this.bus.send(o.customerId, { type: 'order.updated', order: this.view(next, 'customer') });
+    return next;
+  }
+  setRegionOverrides(over: Partial<RegionProfile>[]) { this.db.setMeta('regions', JSON.stringify(over)); return this.regions(); }
+
   // ---------- dispatcher
   /** Run periodically: expands search radius, expires stale requests/offers, times out chosen partners, fires subscriptions and scheduled orders. */
   tick() {
@@ -466,6 +691,10 @@ export class Service {
       else if (action === 'expire') { const r = apply(o, { type: 'expire', actor: 'system' }); if (r.ok) this.commit(o, r.order, { type: 'expire', actor: 'system' }); }
       else if (action === 'chosen_timeout') { const r = apply(o, { type: 'chosen_timeout', actor: 'system' }); if (r.ok) this.commit(o, r.order, { type: 'chosen_timeout', actor: 'system' }); }
       if (o.offers.length) { const r = apply(o, { type: 'expire_offers', actor: 'system', now: new Date(t).toISOString() }); if (r.ok && r.order.offers.length !== o.offers.length) { this.db.putOrder(r.order); this.broadcastOrder(r.order); } }
+    }
+    for (const r of this.db.openRuns()) {
+      if (r.status === 'open' && Date.parse(r.cutoffAt) <= t) { const closed = { ...r, status: 'closed' as const, updatedAt: now() }; this.db.putRun(closed); this.broadcastRun(closed); const p = this.db.getPartner(r.partnerId); if (p) this.notify(p.userId, 'Trip closed for new orders', `${r.orderIds.length} order${r.orderIds.length === 1 ? '' : 's'} to pick up. Start the trip when you leave`, null, { url: `/partner/runs/${r.id}` }); }
+      if (Date.parse(r.departAt) + 2 * 3600_000 <= t) { try { this.cancelRun({ user: { role: 'admin' } as User, partner: null, shop: null }, r.id, 'The trip did not start'); } catch { /* already handled */ } }
     }
     for (const s of this.db.allSubs()) {
       if (!s.active || Date.parse(s.nextRunAt) > t) continue;

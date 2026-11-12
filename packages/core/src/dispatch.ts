@@ -1,6 +1,19 @@
 import { DISPATCH } from './constants.js';
 import { haversineKm } from './geo.js';
-import type { Order, Partner } from './types.js';
+import { DEFAULT_REGION_ID, REGIONS } from './constants.js';
+import type { LatLng, Order, Partner, RegionProfile, Run } from './types.js';
+
+/** Pick the region profile for a point: the nearest named region whose coverage contains it, else the sparsest default. */
+export function regionFor(pos: LatLng, regions: RegionProfile[] = REGIONS): RegionProfile {
+  const hits = regions.filter(r => r.coverageKm > 0 && haversineKm(r.center, pos) <= r.coverageKm).sort((a, b) => haversineKm(a.center, pos) - haversineKm(b.center, pos));
+  return hits[0] ?? regions.find(r => r.id === DEFAULT_REGION_ID) ?? regions[0];
+}
+
+/** Runs a customer at `pos` may attach an order to right now. */
+export function joinableRuns(runs: Run[], pos: LatLng, communityId: string | null | undefined, now = Date.now(), maxKm = 30): Run[] {
+  return runs.filter(r => r.status === 'open' && Date.parse(r.cutoffAt) > now && r.orderIds.length < r.capacity && (!r.communityId || r.communityId === communityId) && haversineKm(r.from, pos) <= maxKm)
+    .sort((a, b) => Date.parse(a.departAt) - Date.parse(b.departAt));
+}
 
 /** Where a partner must be near to receive this request. */
 export function requestOrigin(o: Order) {
@@ -21,7 +34,7 @@ export function eligiblePartners(o: Order, partners: Partner[], now = Date.now()
   if (o.status !== 'requesting' && o.status !== 'counter') return [];
   if (o.courierId) return [];
   return partners.filter(p => {
-    if (!p.online || !p.verified || p.activeOrderId) return false;
+    if (!p.online || !p.verified || p.activeOrderId || p.activeRunId) return false;
     if (o.declinedIds.includes(p.id)) return false;
     if (o.mode === 'choose') return o.chosenId === p.id;
     if (!locationFresh(p, now)) return false;
@@ -33,9 +46,9 @@ export function eligiblePartners(o: Order, partners: Partner[], now = Date.now()
 /** Partners a customer may pick from in choose mode (online, free, nearby; declined ones are shown but flagged). */
 export function choosablePartners(o: Order, partners: Partner[], now = Date.now()) {
   return partners
-    .filter(p => p.online && p.verified && !p.activeOrderId && locationFresh(p, now))
+    .filter(p => p.online && p.verified && !p.activeOrderId && !p.activeRunId && locationFresh(p, now))
     .map(p => ({ partner: p, km: partnerDistanceKm(o, p) ?? 99, declined: o.declinedIds.includes(p.id) }))
-    .filter(x => x.km <= DISPATCH.radiusKm[DISPATCH.radiusKm.length - 1])
+    .filter(x => x.km <= (o.dispatch?.radiusKm ?? DISPATCH.radiusKm).slice(-1)[0])
     .sort((a, b) => a.km - b.km);
 }
 
@@ -54,14 +67,15 @@ export function dispatchTick(o: Order, now = Date.now()): 'none' | 'expand' | 'e
   if (o.status !== 'requesting' && o.status !== 'counter') return 'none';
   if (!isDue(o, now)) return 'none';
   const age = now - openedAt(o);
-  if (age >= DISPATCH.expireAfterMs) return 'expire';
+  const d = o.dispatch ?? DISPATCH;
+  if (age >= d.expireAfterMs) return 'expire';
   if (o.mode === 'choose' && o.chosenId) {
     const since = now - Date.parse(o.updatedAt);
     return since >= DISPATCH.chooseRespondMs ? 'chosen_timeout' : 'none';
   }
   if (o.mode !== 'choose') {
-    const ladder = DISPATCH.radiusKm;
-    const wanted = ladder[Math.min(ladder.length - 1, Math.floor(age / DISPATCH.expandEveryMs))];
+    const ladder = d.radiusKm;
+    const wanted = ladder[Math.min(ladder.length - 1, Math.floor(age / d.expandEveryMs))];
     if (wanted > o.searchRadiusKm) return 'expand';
   }
   return 'none';

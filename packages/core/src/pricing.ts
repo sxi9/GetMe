@@ -1,16 +1,17 @@
 import { ANY_SHOP_BASE_KM, DELIVERY_BASE, DELIVERY_MAX, DELIVERY_MIN, DELIVERY_PER_KM, INSURE_FEE, PK_SIZES, SERVICE_FEE, SHOP_COMMISSION_RATE } from './constants.js';
-import type { Fee, Order, OrderItem, PayMethod } from './types.js';
+import type { Fee, Order, OrderItem, PayMethod, RegionProfile } from './types.js';
 
 const round5 = (n: number) => Math.ceil(n / 5) * 5;
 
 /** Delivery fee from the pickup→drop distance (km). Shops' listed fee is this formula on their distance. */
-export function deliveryFeeForKm(km: number, surge = 1): number {
-  const raw = DELIVERY_BASE + DELIVERY_PER_KM * km;
-  return Math.max(DELIVERY_MIN, Math.min(DELIVERY_MAX, round5(raw * surge)));
+export function deliveryFeeForKm(km: number, surge = 1, region?: Pick<RegionProfile, 'deliveryBase' | 'deliveryPerKm' | 'deliveryMin' | 'deliveryMax' | 'surcharge'>): number {
+  const base = region?.deliveryBase ?? DELIVERY_BASE, perKm = region?.deliveryPerKm ?? DELIVERY_PER_KM, min = region?.deliveryMin ?? DELIVERY_MIN, max = region?.deliveryMax ?? DELIVERY_MAX;
+  const raw = (base + perKm * km) * (region?.surcharge ?? 1);
+  return Math.max(min, Math.min(max, round5(raw * surge)));
 }
 
-export function listDeliveryFee(shopKm: number | null, surge = 1): number {
-  return deliveryFeeForKm(shopKm ?? ANY_SHOP_BASE_KM, surge);
+export function listDeliveryFee(shopKm: number | null, surge = 1, region?: Parameters<typeof deliveryFeeForKm>[2]): number {
+  return deliveryFeeForKm(shopKm ?? ANY_SHOP_BASE_KM, surge, region);
 }
 
 export function parcelDeliveryFee(size: string): number {

@@ -4,11 +4,13 @@ import websocket from '@fastify/websocket';
 import fstatic from '@fastify/static';
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { DomainError, TERMINAL, digits, validOtp, validPhone, validEmail, validPassword, validateShopItem, type OrderEventInput, type Role, type User } from '@getme/core';
+import { DomainError, TERMINAL, digits, validOtp, validPhone, validEmail, validPassword, validateShopItem, type OrderEventInput, type Partner, type Role, type User } from '@getme/core';
 import { Db } from './db.js';
 import { Bus } from './bus.js';
 import { Service } from './service.js';
 import { Sim } from './sim.js';
+import { Push, Sms } from './push.js';
+import { reverse as geoReverse, search as geoSearch } from './geo.js';
 import { seed } from './seed.js';
 import { now, otp4, token, uid } from './ids.js';
 
@@ -28,6 +30,8 @@ const db = new Db(DB_PATH);
 seed(db);
 const bus = new Bus();
 const svc = new Service(db, bus);
+svc.push = new Push(db);
+svc.sms = new Sms(db);
 const sim = SIM_BOTS ? new Sim(svc, SIM_SPEED) : null;
 
 // Sim hooks: wrap commit/create so bots react to real events.
@@ -77,19 +81,20 @@ app.setErrorHandler((err, _req, reply) => {
   return reply.status(500).send({ error: 'internal', message: 'Something went wrong' });
 });
 
-const ROLES: Role[] = ['customer', 'partner', 'shop'];
+const ROLES: Role[] = ['customer', 'partner', 'shop', 'admin'];
 function newUser(role: Role, name: string, phone: string, email: string | null): User {
   const u: User = { id: uid('u_'), role, name, phone, email, lang: 'en', pushEnabled: true, referralCode: (name.split(' ')[0] || 'GETME').toUpperCase() + '50', createdAt: now() };
   db.putUser(u);
   if (role === 'customer') db.putLedger({ id: uid('l_'), userId: u.id, orderId: null, kind: 'topup', amount: 0, note: 'Wallet opened', at: now() });
-  if (role === 'partner') db.putPartner({ id: uid('p_'), userId: u.id, name: u.name, initials: u.name.split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase() || 'P', vehicle: 'Bike', plate: '', rating: 5, trips: 0, online: false, pos: null, posAt: null, area: 'HSR Layout', verified: false, activeOrderId: null, floatLimit: 1000 });
-  if (role === 'shop') db.putShop({ id: uid('s_'), ownerId: u.id, name: `${u.name}'s shop`, cat: 'Grocery', address: '', hours: '9 am – 9 pm', pos: { lat: 12.9121, lng: 77.6446 }, open: false, gstin: null, items: [], rating: 0, createdAt: now() });
+  if (role === 'partner') db.putPartner({ id: uid('p_'), userId: u.id, name: u.name, initials: u.name.split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase() || 'P', photoUrl: null, tier: 'runner', documents: [], verification: 'none', verificationNote: null, communityId: null, activeRunId: null, vehicle: 'Bike', plate: '', rating: 5, trips: 0, online: false, pos: null, posAt: null, area: 'Nearby', verified: false, activeOrderId: null, floatLimit: 1000 });
+  if (role === 'shop') db.putShop({ id: uid('s_'), ownerId: u.id, name: `${u.name}'s shop`, photoUrl: null, approved: false, cat: 'Grocery', address: '', hours: '9 am – 9 pm', pos: { lat: 12.9121, lng: 77.6446 }, open: false, gstin: null, items: [], rating: 0, createdAt: now() });
   return u;
 }
 function session(u: User) { const t = token(); db.putSession({ token: t, userId: u.id, createdAt: now() }); return { token: t, ...me(svc.ctx(u)) }; }
 function me(c: ReturnType<typeof svc.ctx>) {
   const { user } = c;
-  return { user, partner: c.partner, shop: c.shop, wallet: user.role === 'customer' ? db.balance(user.id) : undefined, addresses: user.role === 'customer' ? db.addresses(user.id) : undefined, favourites: user.role === 'customer' ? db.favourites(user.id) : undefined };
+  const community = user.communityId ? db.getCommunity(user.communityId) : null;
+  return { user, partner: c.partner, shop: c.shop, community, wallet: user.role === 'customer' ? db.balance(user.id) : undefined, addresses: user.role === 'customer' ? db.addresses(user.id) : undefined, favourites: user.role === 'customer' ? db.favourites(user.id) : undefined, vapidPublicKey: svc.push?.publicKey };
 }
 
 app.post<{ Body: { phone: string; role: Role } }>('/api/auth/otp', async (req) => {
@@ -108,7 +113,9 @@ app.post<{ Body: { phone: string; role: Role; code: string; name?: string } }>('
   const rec = db.getOtp(p, role);
   if (!rec || rec.code !== code.trim() || Date.parse(rec.expiresAt) < Date.now()) throw new DomainError('bad_code', 'That code is wrong or has expired');
   db.delOtp(p, role);
-  const u = db.findUserByPhone(p, role) ?? newUser(role, name?.trim() || 'GetMe user', p, null);
+  const existing = db.findUserByPhone(p, role);
+  if (!existing && role === 'admin') throw new DomainError('forbidden', 'Admin accounts are created by GetMe ops');
+  const u = existing ?? newUser(role, name?.trim() || 'GetMe user', p, null);
   return session(u);
 });
 app.post<{ Body: { role: Role; email: string; name?: string } }>('/api/auth/google', async (req) => {
@@ -130,8 +137,8 @@ app.post('/api/auth/logout', async (req) => { const h = req.headers.authorizatio
 app.get('/api/me', async (req) => me(ctxOf(req)));
 app.patch<{ Body: Partial<User> }>('/api/me', async (req) => {
   const c = ctxOf(req); const b: any = req.body ?? {};
-  const u = { ...c.user, name: b.name?.trim() || c.user.name, lang: b.lang ?? c.user.lang, pushEnabled: b.pushEnabled ?? c.user.pushEnabled };
-  db.putUser(u); return me(svc.ctx(u));
+  const u = { ...c.user, name: b.name?.trim() || c.user.name, lang: b.lang ?? c.user.lang, pushEnabled: b.pushEnabled ?? c.user.pushEnabled, photoUrl: b.photoUrl === undefined ? c.user.photoUrl ?? null : b.photoUrl };
+  db.putUser(u); if (c.partner && b.photoUrl !== undefined) db.putPartner({ ...c.partner, photoUrl: b.photoUrl }); return me(svc.ctx(u));
 });
 app.get('/api/notifications', async (req) => { const c = ctxOf(req); return db.notifications(c.user.id); });
 app.post('/api/notifications/read', async (req) => { const c = ctxOf(req); db.markNotificationsRead(c.user.id); return { ok: true }; });
@@ -153,11 +160,11 @@ app.get<{ Querystring: { lat?: string; lng?: string; q?: string } }>('/api/shops
   const home = db.addresses(c.user.id)[0];
   const from = req.query.lat && req.query.lng ? { lat: Number(req.query.lat), lng: Number(req.query.lng) } : home ? { lat: home.lat, lng: home.lng } : { lat: 12.9121, lng: 77.6446 };
   const q = (req.query.q ?? '').trim().toLowerCase();
-  return svc.shopsNear(from).filter(s => !q || s.name.toLowerCase().includes(q) || s.cat.toLowerCase().includes(q) || s.items.some(i => i.name.toLowerCase().includes(q)));
+  return svc.shopsNear(from).filter(s => s.approved).filter(s => !q || s.name.toLowerCase().includes(q) || s.cat.toLowerCase().includes(q) || s.items.some(i => i.name.toLowerCase().includes(q)));
 });
 app.get<{ Params: { id: string } }>('/api/shops/:id', async (req) => { const c = ctxOf(req); const s = db.getShop(req.params.id); if (!s) throw new DomainError('not_found', 'Shop not found'); const home = db.addresses(c.user.id)[0] ?? { lat: 12.9121, lng: 77.6446 }; return svc.shopCard(s, home); });
 app.post('/api/orders/quote', async (req) => svc.quote(requireRole(req, 'customer'), req.body as any));
-app.post('/api/orders', async (req) => { const c = requireRole(req, 'customer'); const o = svc.createOrder(c, req.body as any); return svc.view(o, 'customer'); });
+app.post('/api/orders', async (req) => { const c = requireRole(req, 'customer'); const o = svc.createOrder(c, { ...(req.body as any), idempotencyKey: (req.headers['idempotency-key'] as string | undefined) || (req.body as any)?.idempotencyKey }); return svc.view(o, 'customer'); });
 app.get('/api/orders', async (req) => {
   const c = ctxOf(req);
   if (c.user.role === 'customer') return db.ordersByCustomer(c.user.id).map(o => svc.view(o, 'customer'));
@@ -173,8 +180,8 @@ app.get<{ Params: { id: string } }>('/api/orders/:id', async (req) => {
 });
 app.post<{ Params: { id: string }; Body: OrderEventInput }>('/api/orders/:id/events', async (req) => {
   const c = ctxOf(req);
-  const ev = { ...(req.body as any), actor: c.user.role } as OrderEventInput;
-  const o = svc.event(c, req.params.id, ev);
+  const ev = { ...(req.body as any), actor: c.user.role === 'admin' ? 'system' : c.user.role } as OrderEventInput;
+  const o = svc.event(c, req.params.id, ev, (req.headers['idempotency-key'] as string | undefined) || undefined);
   return svc.view(o, c.user.role, c);
 });
 app.get<{ Params: { id: string } }>('/api/orders/:id/partners', async (req) => svc.choosable(requireRole(req, 'customer'), req.params.id));
@@ -194,8 +201,10 @@ app.post<{ Body: any }>('/api/addresses', async (req) => {
   const c = ctxOf(req); const b: any = req.body ?? {};
   if (!(b.line || '').trim()) throw new DomainError('invalid', 'Enter the address');
   const home = db.addresses(c.user.id)[0];
-  const a = { id: b.id ?? uid('addr_'), label: (b.label || 'Other').trim(), line: b.line.trim(), area: (b.area || '').trim() || undefined, lat: Number(b.lat) || (home?.lat ?? 12.9121) + (Math.random() - 0.5) * 0.02, lng: Number(b.lng) || (home?.lng ?? 77.6446) + (Math.random() - 0.5) * 0.02 };
-  db.putAddress(c.user.id, a); return db.addresses(c.user.id);
+  const keep = (k: string) => (b[k] ?? '').toString().trim() || undefined;
+  const a = { id: b.id ?? uid('addr_'), label: (b.label || 'Other').trim(), line: b.line.trim(), area: keep('area'), landmark: keep('landmark'), building: keep('building'), tower: keep('tower'), floor: keep('floor'), flat: keep('flat'), directions: keep('directions'), gatePhotoUrl: b.gatePhotoUrl ?? null, handoff: ['in_person', 'gate', 'leave_at_door'].includes(b.handoff) ? b.handoff : 'in_person', source: b.source ?? 'typed', accuracyM: b.accuracyM ? Number(b.accuracyM) : undefined, communityId: c.user.communityId ?? null,
+    lat: Number(b.lat) || (home?.lat ?? 12.9121) + (Math.random() - 0.5) * 0.02, lng: Number(b.lng) || (home?.lng ?? 77.6446) + (Math.random() - 0.5) * 0.02 };
+  db.putAddress(c.user.id, a); if (b.makeDefault) { const rest = db.addresses(c.user.id).filter(x => x.id !== a.id); for (const x of rest) db.delAddress(c.user.id, x.id); db.putAddress(c.user.id, a); for (const x of rest) db.putAddress(c.user.id, x); } return db.addresses(c.user.id);
 });
 app.delete<{ Params: { id: string } }>('/api/addresses/:id', async (req) => { const c = ctxOf(req); db.delAddress(c.user.id, req.params.id); return db.addresses(c.user.id); });
 app.post<{ Params: { partnerId: string } }>('/api/favourites/:partnerId', async (req) => { const c = requireRole(req, 'customer'); return { fav: db.toggleFavourite(c.user.id, req.params.partnerId), favourites: db.favourites(c.user.id) }; });
@@ -209,20 +218,70 @@ app.post<{ Body: { lat: number; lng: number } }>('/api/partner/location', async 
 app.get('/api/partner/requests', async (req) => svc.requestsFor(requireRole(req, 'partner')));
 app.get('/api/partner/active', async (req) => { const c = requireRole(req, 'partner'); const o = c.partner!.activeOrderId ? db.getOrder(c.partner!.activeOrderId) : null; return o ? svc.view(o, 'partner', c) : null; });
 app.get('/api/partner/earnings', async (req) => svc.earnings(requireRole(req, 'partner')));
-app.patch<{ Body: any }>('/api/partner', async (req) => { const c = requireRole(req, 'partner'); const b: any = req.body ?? {}; const p = { ...c.partner!, vehicle: b.vehicle ?? c.partner!.vehicle, plate: b.plate ?? c.partner!.plate, area: b.area ?? c.partner!.area, verified: b.documents ? true : c.partner!.verified }; db.putPartner(p); return p; });
+app.patch<{ Body: any }>('/api/partner', async (req) => {
+  const c = requireRole(req, 'partner'); const b: any = req.body ?? {}; const cur = c.partner!;
+  const docs = Array.isArray(b.documents) ? [...cur.documents, ...b.documents.filter((d: any) => d && d.url && ['id', 'licence', 'rc', 'selfie'].includes(d.kind)).map((d: any) => ({ kind: d.kind, url: String(d.url), at: now() }))] : cur.documents;
+  const tier = b.tier === 'pro' || b.tier === 'runner' ? b.tier : cur.tier;
+  const needed = tier === 'runner' ? ['id', 'selfie'] : ['id', 'licence', 'rc', 'selfie'];
+  const complete = needed.every(k => docs.some(d => d.kind === k));
+  const verification: Partner['verification'] = cur.verification === 'verified' ? 'verified' : complete ? 'pending' : cur.verification;
+  const p = { ...cur, vehicle: b.vehicle ?? cur.vehicle, plate: b.plate ?? cur.plate, area: b.area ?? cur.area, photoUrl: b.photoUrl === undefined ? cur.photoUrl : b.photoUrl, tier, documents: docs, verification, floatLimit: tier === 'runner' ? Math.min(cur.floatLimit, 1000) : cur.floatLimit };
+  db.putPartner(p);
+  if (verification === 'pending' && cur.verification !== 'pending') for (const a of db.usersByRole('admin')) svc.notify(a.id, 'Partner awaiting verification', `${p.name} · ${tier}`, null, { url: '/admin' });
+  return p;
+});
+app.get('/api/partner/runs', async (req) => { const c = requireRole(req, 'partner'); return db.runsByPartner(c.partner!.id).map(r => svc.runView(r, c)); });
+app.post<{ Body: any }>('/api/runs', async (req) => svc.runView(svc.createRun(requireRole(req, 'partner'), req.body as any)));
+app.get<{ Querystring: { lat?: string; lng?: string } }>('/api/runs', async (req) => { const c = ctxOf(req); const q = req.query; return svc.runsFor(c, q.lat && q.lng ? { lat: Number(q.lat), lng: Number(q.lng) } : undefined); });
+app.get<{ Params: { id: string } }>('/api/runs/:id', async (req) => { const c = ctxOf(req); const r = db.getRun(req.params.id); if (!r) throw new DomainError('not_found', 'Trip not found'); return svc.runView(r, c); });
+app.post<{ Params: { id: string } }>('/api/runs/:id/close', async (req) => svc.runView(svc.closeRun(requireRole(req, 'partner'), req.params.id)));
+app.post<{ Params: { id: string } }>('/api/runs/:id/start', async (req) => { const c = requireRole(req, 'partner'); return svc.runView(svc.startRun(c, req.params.id), c); });
+app.post<{ Params: { id: string } }>('/api/runs/:id/cancel', async (req) => { const c = ctxOf(req); return svc.runView(svc.cancelRun(c, req.params.id)); });
+app.post<{ Params: { id: string }; Body: { orderId: string } }>('/api/runs/:id/focus', async (req) => { const c = requireRole(req, 'partner'); svc.focusRunOrder(c, req.params.id, (req.body as any)?.orderId); return { ok: true }; });
+
+// ---------- communities
+app.get('/api/communities', async (req) => { ctxOf(req); return db.listCommunities().map(c => ({ id: c.id, name: c.name, kind: c.kind, address: c.address, pos: c.pos, memberCount: c.memberCount })); });
+app.post<{ Body: any }>('/api/communities', async (req) => svc.createCommunity(ctxOf(req), req.body as any));
+app.post<{ Body: { code: string } }>('/api/communities/join', async (req) => svc.joinCommunity(ctxOf(req), (req.body as any)?.code));
+app.post('/api/communities/leave', async (req) => { svc.leaveCommunity(ctxOf(req)); return { ok: true }; });
+app.get('/api/community/board', async (req) => svc.board(ctxOf(req)));
+app.post<{ Body: { text: string } }>('/api/community/announce', async (req) => svc.postAnnouncement(ctxOf(req), (req.body as any)?.text));
+
+// ---------- geocoding (GPS → place, text → candidates)
+app.get<{ Querystring: { lat: string; lng: string } }>('/api/geo/reverse', async (req) => { ctxOf(req); const lat = Number(req.query.lat), lng = Number(req.query.lng); if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new DomainError('invalid', 'lat/lng required'); const hit = await geoReverse(db, { lat, lng }); return { ...hit, region: svc.regionAt({ lat, lng }) }; });
+app.get<{ Querystring: { q: string; lat?: string; lng?: string } }>('/api/geo/search', async (req) => { ctxOf(req); const q = req.query; return geoSearch(db, q.q ?? '', q.lat && q.lng ? { lat: Number(q.lat), lng: Number(q.lng) } : undefined); });
+app.get<{ Querystring: { lat: string; lng: string } }>('/api/geo/region', async (req) => { ctxOf(req); return svc.regionAt({ lat: Number(req.query.lat), lng: Number(req.query.lng) }); });
+
+// ---------- web push
+app.get('/api/push/vapid', async () => ({ publicKey: svc.push?.publicKey ?? null }));
+app.post<{ Body: { endpoint: string; keys: { p256dh: string; auth: string } } }>('/api/push/subscribe', async (req) => { const c = ctxOf(req); const b: any = req.body; if (!b?.endpoint || !b?.keys?.p256dh) throw new DomainError('invalid', 'Bad subscription'); db.putPushSub({ userId: c.user.id, endpoint: b.endpoint, keys: b.keys, at: now() }); return { ok: true }; });
+app.post<{ Body: { endpoint: string } }>('/api/push/unsubscribe', async (req) => { ctxOf(req); db.delPushSub((req.body as any)?.endpoint ?? ''); return { ok: true }; });
+app.post('/api/push/test', async (req) => { const c = ctxOf(req); const n = await svc.push!.send(c.user.id, { title: 'GetMe', body: 'Push notifications are working', url: `/${c.user.role}` }); return { delivered: n }; });
+
+// ---------- admin
+app.get('/api/admin/overview', async (req) => { requireRole(req, 'admin'); return svc.adminOverview(); });
+app.get('/api/admin/partners', async (req) => { requireRole(req, 'admin'); return db.listPartners().map(p => ({ ...p, user: db.getUser(p.userId) })); });
+app.post<{ Params: { id: string }; Body: { decision: 'verified' | 'rejected'; note?: string } }>('/api/admin/partners/:id/verify', async (req) => { requireRole(req, 'admin'); const b: any = req.body; return svc.verifyPartner(req.params.id, b.decision, b.note); });
+app.get('/api/admin/shops', async (req) => { requireRole(req, 'admin'); return db.listShops(); });
+app.post<{ Params: { id: string }; Body: { approved: boolean } }>('/api/admin/shops/:id/approve', async (req) => { requireRole(req, 'admin'); return svc.approveShop(req.params.id, !!(req.body as any)?.approved); });
+app.get('/api/admin/orders', async (req) => { requireRole(req, 'admin'); return db.allOrders(200).map(o => ({ ...svc.view(o, 'customer'), otp: undefined })); });
+app.post<{ Params: { id: string }; Body: { approve: boolean; amount?: number } }>('/api/admin/refunds/:id', async (req) => { requireRole(req, 'admin'); const b: any = req.body; return svc.resolveRefund(req.params.id, !!b?.approve, b?.amount); });
+app.put<{ Body: any[] }>('/api/admin/regions', async (req) => { requireRole(req, 'admin'); return svc.setRegionOverrides(Array.isArray(req.body) ? req.body : []); });
+app.get('/api/admin/users', async (req) => { requireRole(req, 'admin'); return db.allUsers(); });
+app.get('/api/regions', async (req) => { ctxOf(req); return svc.regions(); });
 
 // ---------- shop
 app.get('/api/shop', async (req) => requireRole(req, 'shop').shop);
-app.patch<{ Body: any }>('/api/shop', async (req) => { const c = requireRole(req, 'shop'); const b: any = req.body ?? {}; const s = { ...c.shop!, open: typeof b.open === 'boolean' ? b.open : c.shop!.open, name: b.name?.trim() || c.shop!.name, hours: b.hours ?? c.shop!.hours, address: b.address ?? c.shop!.address, gstin: b.gstin === undefined ? c.shop!.gstin : b.gstin, cat: b.cat ?? c.shop!.cat }; db.putShop(s); bus.send(c.user.id, { type: 'shop.updated', shop: s }); return s; });
+app.patch<{ Body: any }>('/api/shop', async (req) => { const c = requireRole(req, 'shop'); const b: any = req.body ?? {}; const s = { ...c.shop!, open: typeof b.open === 'boolean' ? b.open : c.shop!.open, name: b.name?.trim() || c.shop!.name, hours: b.hours ?? c.shop!.hours, address: b.address ?? c.shop!.address, gstin: b.gstin === undefined ? c.shop!.gstin : b.gstin, cat: b.cat ?? c.shop!.cat, photoUrl: b.photoUrl === undefined ? c.shop!.photoUrl : b.photoUrl, pos: b.pos?.lat != null ? { lat: Number(b.pos.lat), lng: Number(b.pos.lng) } : c.shop!.pos }; db.putShop(s); bus.send(c.user.id, { type: 'shop.updated', shop: s }); return s; });
 app.post<{ Body: any }>('/api/shop/items', async (req) => {
   const c = requireRole(req, 'shop'); const b: any = req.body ?? {}; const err = validateShopItem(b); if (err) throw new DomainError('invalid', err);
-  const s = c.shop!; const item = { id: uid('i_'), shopId: s.id, name: b.name.trim(), unit: (b.unit || '1 pc').trim(), price: Math.round(Number(b.price)), cat: b.cat || 'Other', stock: Math.max(0, Math.round(Number(b.stock) || 0)), on: (Number(b.stock) || 0) > 0 };
+  const s = c.shop!; const item = { id: uid('i_'), shopId: s.id, name: b.name.trim(), photoUrl: b.photoUrl ?? null, unit: (b.unit || '1 pc').trim(), price: Math.round(Number(b.price)), cat: b.cat || 'Other', stock: Math.max(0, Math.round(Number(b.stock) || 0)), on: (Number(b.stock) || 0) > 0 };
   s.items = [item, ...s.items]; db.putShop(s); return s;
 });
 app.patch<{ Params: { id: string }; Body: any }>('/api/shop/items/:id', async (req) => {
   const c = requireRole(req, 'shop'); const s = c.shop!; const b: any = req.body ?? {};
   const i = s.items.findIndex(x => x.id === req.params.id); if (i < 0) throw new DomainError('not_found', 'Item not found');
-  const it = s.items[i]; const next = { ...it, name: b.name?.trim() || it.name, unit: b.unit ?? it.unit, price: b.price != null ? Math.round(Number(b.price)) : it.price, cat: b.cat ?? it.cat, stock: b.stock != null ? Math.max(0, Math.round(Number(b.stock))) : b.restock ? it.stock + Number(b.restock) : it.stock, on: typeof b.on === 'boolean' ? b.on : it.on };
+  const it = s.items[i]; const next = { ...it, photoUrl: b.photoUrl === undefined ? it.photoUrl ?? null : b.photoUrl, name: b.name?.trim() || it.name, unit: b.unit ?? it.unit, price: b.price != null ? Math.round(Number(b.price)) : it.price, cat: b.cat ?? it.cat, stock: b.stock != null ? Math.max(0, Math.round(Number(b.stock))) : b.restock ? it.stock + Number(b.restock) : it.stock, on: typeof b.on === 'boolean' ? b.on : it.on };
   if (next.stock > 0 && (b.restock || b.stock != null) && typeof b.on !== 'boolean') next.on = true;
   if (next.stock === 0) next.on = false;
   s.items[i] = next; db.putShop(s); return s;
@@ -236,8 +295,9 @@ app.get('/api/shop/analytics', async (req) => svc.shopAnalytics(requireRole(req,
 // ---------- bootstrap snapshot per role (one call on app start)
 app.get('/api/bootstrap', async (req) => {
   const c = ctxOf(req);
-  if (c.user.role === 'customer') return { me: me(c), orders: db.ordersByCustomer(c.user.id).map(o => svc.view(o, 'customer')), subscriptions: db.subs(c.user.id).filter(s => s.active), notifications: db.notifications(c.user.id, 20) };
-  if (c.user.role === 'partner') { const active = c.partner!.activeOrderId ? db.getOrder(c.partner!.activeOrderId) : null; return { me: me(c), requests: svc.requestsFor(c), active: active ? svc.view(active, 'partner', c) : null, earnings: svc.earnings(c), notifications: db.notifications(c.user.id, 20) }; }
+  if (c.user.role === 'customer') return { me: me(c), orders: db.ordersByCustomer(c.user.id).map(o => svc.view(o, 'customer')), subscriptions: db.subs(c.user.id).filter(s => s.active), notifications: db.notifications(c.user.id, 20), runs: svc.runsFor(c), board: svc.board(c) };
+  if (c.user.role === 'partner') { const active = c.partner!.activeOrderId ? db.getOrder(c.partner!.activeOrderId) : null; const run = c.partner!.activeRunId ? db.getRun(c.partner!.activeRunId) : null; return { me: me(c), requests: svc.requestsFor(c), active: active ? svc.view(active, 'partner', c) : null, run: run ? svc.runView(run, c) : null, runs: db.runsByPartner(c.partner!.id).map(r => svc.runView(r, c)), earnings: svc.earnings(c), notifications: db.notifications(c.user.id, 20), board: svc.board(c) }; }
+  if (c.user.role === 'admin') return { me: me(c), overview: svc.adminOverview(), notifications: db.notifications(c.user.id, 20) };
   return { me: me(c), orders: db.ordersByShop(c.shop!.id).map(o => svc.view(o, 'shop')), analytics: svc.shopAnalytics(c), notifications: db.notifications(c.user.id, 20) };
 });
 
@@ -258,7 +318,7 @@ app.get('/ws', { websocket: true }, (socket, req) => {
   });
 });
 
-app.get('/api/health', async () => ({ ok: true, sim: SIM_BOTS, time: now() }));
+app.get('/api/health', async () => ({ ok: true, sim: SIM_BOTS, time: now(), push: !!svc.push, sms: svc.sms?.provider }));
 
 const ticker = setInterval(() => { try { svc.tick(); } catch (e) { app.log.error(e); } }, 5000);
 app.addHook('onClose', async () => clearInterval(ticker));

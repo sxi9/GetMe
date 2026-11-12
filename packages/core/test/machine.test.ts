@@ -1,16 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { apply, bill, settle, makeFee, deliveryFeeForKm, eligiblePartners, dispatchTick, DISPATCH, promoFor } from '../src/index.js';
+import { apply, bill, settle, makeFee, deliveryFeeForKm, eligiblePartners, dispatchTick, DISPATCH, promoFor, regionFor, REGIONS, joinableRuns } from '../src/index.js';
+import type { Run } from '../src/index.js';
 import type { Order, Partner } from '../src/index.js';
 
 const now = '2026-11-12T09:00:00.000Z';
 const base = (over: Partial<Order> = {}): Order => ({
   id: 'GM-1', kind: 'list', customerId: 'u1', customerName: 'Priya', anon: false, shopId: null, shopName: 'Any nearby shop', shopPos: null,
   items: [{ name: 'Tomato 1 kg', qty: 1, unit: '', price: null }], itemsTotal: null,
-  address: { label: 'Home', line: '12, 27th Main', lat: 12.91, lng: 77.64 }, pickup: null, mode: 'broadcast', pay: 'upi', promoCode: null, promo: 0,
+  address: { label: 'Home', line: '12, 27th Main', lat: 12.91, lng: 77.64 }, pickup: null, mode: 'broadcast', runId: null, regionId: 'blr-city', dispatch: { radiusKm: [2, 4, 6], expandEveryMs: 60_000, expireAfterMs: 5 * 60_000 }, pay: 'upi', promoCode: null, promo: 0,
   when: 'now', slot: null, scheduledAt: null, budget: null, subs: true, repeat: false, note: '', receiver: null, pkType: null, pkSize: null,
   status: 'requesting', courierId: null, courierName: null, chosenId: null, offers: [], counter: null, declinedIds: [], seenIds: [],
-  fee: makeFee(45), itemCost: null, receiptUrl: null, pickupPhotoUrl: null, otp: '4821', cashCollected: false, tip: 0, rating: null, customerRating: null,
+  fee: makeFee(45), itemCost: null, receiptUrl: null, pickupPhotoUrl: null, otp: '4821', cashCollected: false, podPhotoUrl: null, idempotencyKeys: [], tip: 0, rating: null, customerRating: null,
   issue: null, refund: null, cancelReason: null, cancelledBy: null, times: { requesting: now }, searchRadiusKm: 2, createdAt: now, updatedAt: now, ...over,
 });
 const ok = (r: ReturnType<typeof apply>): Order => { assert.equal(r.ok, true, r.ok ? '' : r.message); return (r as any).order; };
@@ -110,7 +111,7 @@ test('pricing: fee ladder matches the handoff shop fees; promo caps at delivery'
 
 test('dispatch: eligibility by radius, online, free, freshness; ticks expand and expire', () => {
   const o = base({ shopPos: { lat: 12.91, lng: 77.64 } });
-  const p = (id: string, over: Partial<Partner> = {}): Partner => ({ id, userId: id, name: id, initials: 'X', vehicle: 'Bike', plate: '', rating: 4.5, trips: 1, online: true, pos: { lat: 12.915, lng: 77.64 }, posAt: now, area: '', verified: true, activeOrderId: null, floatLimit: 2000, ...over });
+  const p = (id: string, over: Partial<Partner> = {}): Partner => ({ id, userId: id, name: id, initials: 'X', photoUrl: null, tier: 'pro', documents: [], verification: 'verified', verificationNote: null, communityId: null, activeRunId: null, vehicle: 'Bike', plate: '', rating: 4.5, trips: 1, online: true, pos: { lat: 12.915, lng: 77.64 }, posAt: now, area: '', verified: true, activeOrderId: null, floatLimit: 2000, ...over });
   const t = Date.parse(now) + 1000;
   const ids = (ps: Partner[]) => eligiblePartners(o, ps, t).map(x => x.id);
   assert.deepEqual(ids([p('a'), p('b', { online: false }), p('c', { activeOrderId: 'x' }), p('d', { pos: { lat: 13.0, lng: 77.64 } }), p('e', { posAt: '2020-01-01T00:00:00Z' })]), ['a']);
@@ -120,4 +121,42 @@ test('dispatch: eligibility by radius, online, free, freshness; ticks expand and
   assert.equal(dispatchTick(o, Date.parse(now) + DISPATCH.expireAfterMs), 'expire');
   const c = base({ mode: 'choose', chosenId: 'a', updatedAt: now });
   assert.equal(dispatchTick(c, Date.parse(now) + DISPATCH.chooseRespondMs), 'chosen_timeout');
+});
+
+test('handoff: leave_at_door needs a photo instead of the code; gate too', () => {
+  const o = base({ status: 'arrived', courierId: 'p1', address: { label: 'Home', line: 'x', lat: 1, lng: 1, handoff: 'leave_at_door' } });
+  assert.equal(apply(o, { type: 'complete', actor: 'partner', partnerId: 'p1', otp: '', cashCollected: false }).ok, false);
+  const r = apply(o, { type: 'complete', actor: 'partner', partnerId: 'p1', otp: '', cashCollected: false, podPhotoUrl: '/uploads/door.jpg' }, now);
+  assert.equal(r.ok, true); assert.equal((r as any).order.podPhotoUrl, '/uploads/door.jpg');
+});
+
+test('runs: attach → scheduled → start_run → to_shop; detach returns to broadcast', () => {
+  let o = base({ mode: 'run' });
+  assert.equal(apply(o, { type: 'accept', actor: 'partner', partnerId: 'p1', partnerName: 'R' }).ok, false, 'run orders are not broadcast');
+  o = ok(apply(o, { type: 'attach_run', actor: 'system', partnerId: 'p1', partnerName: 'Ravi', runId: 'run_1', price: 60 }, now));
+  assert.equal(o.status, 'scheduled'); assert.equal(o.fee.delivery, 60); assert.equal(o.courierId, 'p1');
+  assert.equal(apply(o, { type: 'cancel', actor: 'customer' }).ok, true, 'cancellable while waiting');
+  assert.equal(apply(o, { type: 'start_run', actor: 'partner', partnerId: 'p2' }).ok, false);
+  const started = ok(apply(o, { type: 'start_run', actor: 'partner', partnerId: 'p1' }, now));
+  assert.equal(started.status, 'to_shop');
+  const d = ok(apply(o, { type: 'detach_run', actor: 'system', reason: 'Run cancelled' }, now));
+  assert.equal(d.status, 'requesting'); assert.equal(d.mode, 'broadcast'); assert.equal(d.courierId, null);
+});
+
+test('regions: city inside coverage, hill profile near Madikeri, village elsewhere; fee uses the profile', () => {
+  assert.equal(regionFor({ lat: 12.9121, lng: 77.6446 }).id, 'blr-city');
+  assert.equal(regionFor({ lat: 12.43, lng: 75.74 }).id, 'hill');
+  assert.equal(regionFor({ lat: 15.3, lng: 76.4 }).id, 'village');
+  const hill = REGIONS.find(r => r.id === 'hill')!;
+  assert.equal(deliveryFeeForKm(10, 1, hill), 225); // (40 + 140) × 1.25 = 225
+  assert.equal(deliveryFeeForKm(0.6, 1), 35, 'default profile unchanged');
+});
+
+test('joinable runs: open, before cutoff, with capacity, community-scoped, within range', () => {
+  const run = (over: Partial<Run>): Run => ({ id: 'r', partnerId: 'p', partnerName: 'P', label: 'Market', destination: 'Town', destinationPos: null, from: { label: 'x', line: 'x', lat: 12.91, lng: 77.64 }, departAt: '2026-11-12T10:00:00Z', cutoffAt: '2026-11-12T09:30:00Z', capacity: 5, feePerOrder: 60, communityId: null, status: 'open', orderIds: [], note: '', createdAt: now, updatedAt: now, ...over });
+  const t = Date.parse('2026-11-12T09:00:00Z');
+  const pos = { lat: 12.912, lng: 77.645 };
+  const ids = (rs: Run[], c: string | null = null) => joinableRuns(rs, pos, c, t).map(r => r.id);
+  assert.deepEqual(ids([run({ id: 'a' }), run({ id: 'b', status: 'closed' }), run({ id: 'c', cutoffAt: '2026-11-12T08:00:00Z' }), run({ id: 'd', orderIds: ['1', '2', '3', '4', '5'] }), run({ id: 'e', communityId: 'soc1' }), run({ id: 'f', from: { label: 'x', line: 'x', lat: 14, lng: 77 } })]), ['a']);
+  assert.deepEqual(ids([run({ id: 'e', communityId: 'soc1' })], 'soc1'), ['e']);
 });
