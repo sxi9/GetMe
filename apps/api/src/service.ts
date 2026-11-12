@@ -10,6 +10,7 @@ import type { Db } from './db.js';
 import type { Bus } from './bus.js';
 import type { Push, Sms } from './push.js';
 import type { Crypto } from './crypto.js';
+import type { Fcm } from './fcm.js';
 import { now, otp4, token, uid } from './ids.js';
 
 export interface Ctx { user: User; partner: Partner | null; shop: Shop | null }
@@ -35,6 +36,7 @@ export class Service {
   push: Push | null = null;
   sms: Sms | null = null;
   crypto: Crypto | null = null;
+  fcm: Fcm | null = null;
   constructor(public db: Db, public bus: Bus) {}
 
   /** Region profiles with admin overrides applied. */
@@ -60,7 +62,9 @@ export class Service {
     this.bus.send(userId, { type: 'notify', title, body, orderId, url } as any);
     if (!user || !user.pushEnabled) return;
     void (async () => {
-      const delivered = this.push ? await this.push.send(userId, { title, body, url, tag: orderId ?? undefined }) : 0;
+      const web = this.push ? await this.push.send(userId, { title, body, url, tag: orderId ?? undefined }) : 0;
+      const native = this.fcm ? await this.fcm.send(userId, { title, body, url, tag: orderId ?? undefined }) : 0;
+      const delivered = web + native;
       if (!delivered && (opts.important || !this.bus.online(userId)) && user.phone && this.sms) await this.sms.send(user.phone, `GetMe: ${title}${body ? ' – ' + body : ''}`);
     })();
   }

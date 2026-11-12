@@ -1,0 +1,12 @@
+{
+  "name": "@getme/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Native wrappers (Capacitor) for the three GetMe apps: ./customer, ./partner, ./shop. Each folder is a Capacitor app whose web build comes from apps/web with a target flag.",
+  "scripts": {
+    "build:web": "pnpm --filter @getme/web build:targets",
+    "sync": "pnpm -r --filter './customer' --filter './partner' --filter './shop' sync",
+    "add:android": "pnpm -r --filter './customer' --filter './partner' --filter './shop' add:android",
+    "assets": "node scripts/assets.mjs"
+  }
+}

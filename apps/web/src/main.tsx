@@ -1,6 +1,6 @@
-import { StrictMode, Suspense, lazy } from 'react';
+import { StrictMode, Suspense, lazy, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import './styles/app.css';
 import { StoreProvider, useStore } from './lib/store';
 import { SignIn } from './lib/auth';
@@ -8,6 +8,7 @@ import { Phone } from './lib/phone';
 import { I18nProvider } from './lib/i18n';
 import { registerSw } from './lib/push';
 import { initAppearance, useAppearance } from './lib/theme';
+import { APP_TARGET, initNative } from './lib/native';
 import { Icon } from './ui';
 const CustomerApp = lazy(() => import('./customer/App').then(m => ({ default: m.CustomerApp })));
 const PartnerApp = lazy(() => import('./partner/App').then(m => ({ default: m.PartnerApp })));
@@ -29,7 +30,9 @@ function Gate({ role }: { role: Role }) {
   const { session } = useStore();
   return <Phone>{!session ? <SignIn role={role} /> : <Suspense fallback={<div className="body" />}>{role === 'customer' ? <CustomerApp /> : role === 'partner' ? <PartnerApp /> : role === 'shop' ? <ShopApp /> : <AdminApp />}</Suspense>}</Phone>;
 }
+function NativeInit() { const nav = useNavigate(); useEffect(() => { void initNative(p => nav(p)); }, [nav]); return null; }
 function Landing() {
+  if (APP_TARGET) return <Navigate to={'/' + APP_TARGET} replace />;
   const { appearance, setAppearance } = useAppearance();
   const roles: { to: string; icon: string; title: string; text: string }[] = [
     { to: '/customer', icon: 'near_me', title: 'GetMe', text: 'Customer app · lists, shops, packages' },
@@ -57,6 +60,7 @@ const root = w.__getmeRoot ?? (w.__getmeRoot = createRoot(document.getElementByI
 root.render(
   <StrictMode>
     <BrowserRouter>
+      <NativeInit />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/customer/*" element={<RoleApp role="customer" />} />

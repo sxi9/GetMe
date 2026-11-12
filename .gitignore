@@ -11,3 +11,14 @@ e2e/playwright-report/
 e2e/screenshots/
 .DS_Store
 e2e/.data/
+apps/mobile/*/android/app/src/main/assets/public/
+apps/mobile/*/android/app/src/main/assets/capacitor.config.json
+apps/mobile/*/android/app/src/main/assets/capacitor.plugins.json
+apps/mobile/*/android/app/build/
+apps/mobile/*/android/build/
+apps/mobile/*/android/.gradle/
+apps/mobile/*/android/.idea/
+apps/mobile/*/android/local.properties
+apps/mobile/*/android/app/google-services.json
+apps/mobile/*/ios/App/Pods/
+apps/mobile/*/ios/App/App/GoogleService-Info.plist

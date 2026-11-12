@@ -1,9 +1,10 @@
 // Web Push: register the service worker, subscribe with the server's VAPID key,
 // and store the subscription. Safe to call repeatedly; no-ops where unsupported.
 import { api, post } from './api';
+import { isNative, registerNativePush } from './native';
 
 export function pushSupported() { return typeof window !== 'undefined' && 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window; }
-export function pushPermission(): NotificationPermission | 'unsupported' { return pushSupported() ? Notification.permission : 'unsupported'; }
+export function pushPermission(): NotificationPermission | 'unsupported' { if (isNative()) return 'default'; return pushSupported() ? Notification.permission : 'unsupported'; }
 
 function b64ToU8(b64: string) { const pad = '='.repeat((4 - (b64.length % 4)) % 4); const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from([...raw].map(c => c.charCodeAt(0))); }
 
@@ -14,6 +15,7 @@ export async function registerSw(): Promise<ServiceWorkerRegistration | null> {
 
 /** Ask permission (must be called from a user gesture) and subscribe. Returns the final permission. */
 export async function enablePush(): Promise<NotificationPermission | 'unsupported'> {
+  if (isNative()) return (await registerNativePush(url => { window.location.assign(url); })) ? 'granted' : 'denied';
   if (!pushSupported()) return 'unsupported';
   const perm = await Notification.requestPermission();
   if (perm !== 'granted') return perm;
@@ -34,6 +36,7 @@ export async function disablePush() {
 }
 /** Re-sync an existing subscription after sign-in (permission already granted). */
 export async function syncPush() {
+  if (isNative()) { void registerNativePush(url => { window.location.assign(url); }); return; }
   if (!pushSupported() || Notification.permission !== 'granted') return;
   const reg = await registerSw(); const sub = await reg?.pushManager.getSubscription(); if (!sub) return;
   const j = sub.toJSON(); await post('/api/push/subscribe', { endpoint: sub.endpoint, keys: j.keys }).catch(() => {});

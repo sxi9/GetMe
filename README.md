@@ -11,12 +11,14 @@ Built from the design handoff in `design/` (the clickable prototype, seed data a
 | `packages/core` | Pure TypeScript domain: types, the order state machine for all three roles, pricing and settlement, dispatch rules, validation. Unit-tested, no I/O. |
 | `apps/api` | Fastify API + WebSocket realtime on SQLite (`node:sqlite`, no native deps). Auth, orders, dispatch engine, chat, wallet/ledger, shops, partners, subscriptions, public tracking links. |
 | `apps/web` | Vite + React mobile web app with four entry points: `/customer`, `/partner`, `/shop`, `/admin`, plus the public `/track/:token` page. Styled with GetMe's own token layer (`apps/web/src/styles/theme`): a mild teal-green and warm off-white palette, Manrope type, light and dark. |
+| `apps/mobile` | Capacitor shells: three app targets (GetMe, GetMe Partner, GetMe Shops) from the one web build, with icons, splash screens and Android projects. |
 | `e2e` | Playwright end-to-end run across the three roles. |
 
 ## Guides
 
 - [Setup guide](docs/SETUP.md): local run, phone testing, configuration, production deployment, troubleshooting.
 - [Admin panel guide](docs/ADMIN.md): every Ops tab and action, verification checklist, refunds, region tuning, CLI.
+- [Native apps](docs/MOBILE.md): the three Android/iOS apps built from this codebase with Capacitor, background location, FCM push, store release steps.
 - [Roadmap](docs/ROADMAP.md): what modern delivery apps have that GetMe does not yet.
 
 ## Run it
@@ -81,4 +83,4 @@ See `.env.example`. Notable switches: `SIM_BOTS` (demo partners), `DEV_OTP` (fix
 
 ## Production checklist
 
-Set `DEV_OTP=` and `SMS_PROVIDER` with real keys, `SIM_BOTS=0`, `CRYPTO_PROVIDER=nowpayments` with its keys, and persistent VAPID keys; verify Google ID tokens; add a UPI/card gateway behind the `charge` ledger entries (auth at checkout, capture on delivery) and bank payouts behind `payout`; move uploads to object storage; put Postgres/PostGIS behind `Db` if you outgrow SQLite; wrap the partner web app in Capacitor for background location with the screen off, or port the screens to Expo using `@getme/core` unchanged.
+Set `DEV_OTP=` and `SMS_PROVIDER` with real keys, `SIM_BOTS=0`, `CRYPTO_PROVIDER=nowpayments` with its keys, and persistent VAPID keys; verify Google ID tokens; add a UPI/card gateway behind the `charge` ledger entries (auth at checkout, capture on delivery) and bank payouts behind `payout`; move uploads to object storage; put Postgres/PostGIS behind `Db` if you outgrow SQLite; build and sign the three native apps from `apps/mobile` (see the native apps guide).

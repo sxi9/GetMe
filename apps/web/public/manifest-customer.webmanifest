@@ -1,0 +1,1 @@
+{ "name": "GetMe", "short_name": "GetMe", "start_url": "/customer", "scope": "/", "display": "standalone", "background_color": "#14534A", "theme_color": "#14534A", "icons": [{ "src": "/icon-customer.svg", "sizes": "any", "type": "image/svg+xml" }] }

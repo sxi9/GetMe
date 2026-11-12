@@ -1,0 +1,29 @@
+{
+  "name": "@getme/mobile-shop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "GetMe Shops native shell (Capacitor). Web build comes from apps/web with VITE_APP_TARGET=shop.",
+  "scripts": {
+    "sync": "cap sync",
+    "add:android": "cap add android",
+    "add:ios": "cap add ios",
+    "open:android": "cap open android",
+    "open:ios": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/core": "8.6.0",
+    "@capacitor/ios": "8.6.0",
+    "@capacitor/app": "8.0.0",
+    "@capacitor/camera": "8.0.0",
+    "@capacitor/geolocation": "8.0.0",
+    "@capacitor/haptics": "8.0.0",
+    "@capacitor/push-notifications": "8.0.0",
+    "@capacitor/splash-screen": "8.0.0",
+    "@capacitor/status-bar": "8.0.0",
+    "@capacitor-community/background-geolocation": "1.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.0"
+  }
+}

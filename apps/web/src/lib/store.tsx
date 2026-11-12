@@ -5,6 +5,7 @@ import type { Community, OrderEvent, Partner, Role, Shop, User } from '@getme/co
 import { api, getToken, setToken, wsUrl } from './api';
 import { syncPush } from './push';
 import { flush, onQueue, type Queued } from './offline';
+import { haptic, isNative } from './native';
 
 export interface Me { user: User; partner: Partner | null; shop: Shop | null; community?: Community | null; wallet?: number; addresses?: any[]; favourites?: string[]; vapidPublicKey?: string }
 export interface Session { token: string; me: Me }
@@ -44,7 +45,7 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
   const signOut = useCallback(() => { api('/api/auth/logout', { method: 'POST', body: {} }).catch(() => {}); persist(null); }, [persist]);
   const refreshMe = useCallback(async () => { if (!getToken()) return; try { const me = await api<Me>('/api/me'); setSession(s => s ? { ...s, me } : s); } catch (e: any) { if (e.status === 401) persist(null); } }, [persist]);
   const setMe = useCallback((p: Partial<Me>) => setSession(s => s ? { ...s, me: { ...s.me, ...p } } : s), []);
-  const toast = useCallback((text: string, title = 'GetMe · now', orderId: string | null = null, url: string | null = null) => { const id = ++seq.current; setToasts(t => [...t.slice(-2), { id, text, title, orderId, url }]); try { if (document.visibilityState === 'visible' && navigator.vibrate && (navigator as any).userActivation?.hasBeenActive) navigator.vibrate(40); } catch { /* ignore */ } }, []);
+  const toast = useCallback((text: string, title = 'GetMe · now', orderId: string | null = null, url: string | null = null) => { const id = ++seq.current; setToasts(t => [...t.slice(-2), { id, text, title, orderId, url }]); try { if (isNative() || (document.visibilityState === 'visible' && (navigator as any).userActivation?.hasBeenActive)) void haptic('light'); } catch { /* ignore */ } }, []);
   const dismissToast = useCallback((id: number) => setToasts(t => t.filter(x => x.id !== id)), []);
   const subscribe = useCallback((h: Handler) => { handlers.current.add(h); return () => { handlers.current.delete(h); }; }, []);
 

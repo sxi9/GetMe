@@ -1,0 +1,1 @@
+{ "name": "GetMe Shops", "short_name": "Shops", "start_url": "/shop", "scope": "/", "display": "standalone", "background_color": "#14534A", "theme_color": "#14534A", "icons": [{ "src": "/icon-shop.svg", "sizes": "any", "type": "image/svg+xml" }] }

@@ -11,6 +11,7 @@ import { Service } from './service.js';
 import { Sim } from './sim.js';
 import { Push, Sms } from './push.js';
 import { Crypto } from './crypto.js';
+import { Fcm } from './fcm.js';
 import { reverse as geoReverse, search as geoSearch } from './geo.js';
 import { seed } from './seed.js';
 import { now, otp4, token, uid } from './ids.js';
@@ -34,6 +35,7 @@ const svc = new Service(db, bus);
 svc.push = new Push(db);
 svc.sms = new Sms(db);
 svc.crypto = new Crypto(db);
+svc.fcm = new Fcm(db);
 const sim = SIM_BOTS ? new Sim(svc, SIM_SPEED) : null;
 
 // Sim hooks: wrap commit/create so bots react to real events.
@@ -287,6 +289,8 @@ app.post('/api/crypto/webhook', { config: { rawBody: true } }, async (req, reply
 app.get('/api/push/vapid', async () => ({ publicKey: svc.push?.publicKey ?? null }));
 app.post<{ Body: { endpoint: string; keys: { p256dh: string; auth: string } } }>('/api/push/subscribe', async (req) => { const c = ctxOf(req); const b: any = req.body; if (!b?.endpoint || !b?.keys?.p256dh) throw new DomainError('invalid', 'Bad subscription'); db.putPushSub({ userId: c.user.id, endpoint: b.endpoint, keys: b.keys, at: now() }); return { ok: true }; });
 app.post<{ Body: { endpoint: string } }>('/api/push/unsubscribe', async (req) => { ctxOf(req); db.delPushSub((req.body as any)?.endpoint ?? ''); return { ok: true }; });
+app.post<{ Body: { token: string; platform: 'android' | 'ios'; app: 'customer' | 'partner' | 'shop' } }>('/api/push/native', async (req) => { const c = ctxOf(req); const b: any = req.body; if (!b?.token || !['android', 'ios'].includes(b.platform)) throw new DomainError('invalid', 'token and platform required'); db.putNativeToken({ userId: c.user.id, token: String(b.token), platform: b.platform, app: b.app ?? c.user.role, at: now() }); return { ok: true, fcm: svc.fcm?.enabled ?? false }; });
+app.post<{ Body: { token: string } }>('/api/push/native/unregister', async (req) => { ctxOf(req); db.delNativeToken(String((req.body as any)?.token ?? '')); return { ok: true }; });
 app.post('/api/push/test', async (req) => { const c = ctxOf(req); const n = await svc.push!.send(c.user.id, { title: 'GetMe', body: 'Push notifications are working', url: `/${c.user.role}` }); return { delivered: n }; });
 
 // ---------- admin
@@ -349,7 +353,7 @@ app.get('/ws', { websocket: true }, (socket, req) => {
   });
 });
 
-app.get('/api/health', async () => ({ ok: true, sim: SIM_BOTS, time: now(), push: !!svc.push, sms: svc.sms?.provider }));
+app.get('/api/health', async () => ({ ok: true, sim: SIM_BOTS, time: now(), push: !!svc.push, nativePush: svc.fcm?.enabled ?? false, sms: svc.sms?.provider }));
 
 const ticker = setInterval(() => { try { svc.tick(); } catch (e) { app.log.error(e); } }, 5000);
 app.addHook('onClose', async () => clearInterval(ticker));

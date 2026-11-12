@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Address, LatLng, RegionProfile } from '@getme/core';
 import { api } from './api';
+import { isNative, nativeGetPosition, nativeWatchPosition, APP_TARGET } from './native';
 
 export type GpsState = 'idle' | 'asking' | 'ok' | 'denied' | 'unavailable';
 export interface GeoHit { line: string; area: string; lat: number; lng: number; source: string; region?: RegionProfile }
@@ -12,6 +13,7 @@ export function hasGeolocation() { return typeof navigator !== 'undefined' && 'g
 
 /** One-shot position with a timeout; resolves null instead of throwing. */
 export function getPosition(opts: PositionOptions = { enableHighAccuracy: true, timeout: 8000, maximumAge: 30_000 }): Promise<{ pos: LatLng; accuracyM: number } | { error: 'denied' | 'unavailable' }> {
+  if (isNative()) return nativeGetPosition();
   if (!hasGeolocation()) return Promise.resolve({ error: 'unavailable' });
   return new Promise(res => {
     navigator.geolocation.getCurrentPosition(
@@ -52,6 +54,12 @@ export function useCurrentLocation(auto = true) {
 
 /** Continuous watch for the partner app. Calls `onPos` at most every `throttleMs`. */
 export function watchPosition(onPos: (p: LatLng, accuracyM: number) => void, onState: (s: GpsState) => void, throttleMs = 4000): () => void {
+  if (isNative()) {
+    // native shell: background watcher in the partner app so the customer keeps seeing the vehicle with the screen off
+    let last = 0, stop: (() => void) | null = null, cancelled = false;
+    nativeWatchPosition((p, acc) => { onState('ok'); const t = Date.now(); if (t - last >= throttleMs) { last = t; onPos(p, acc); } }, s => onState(s), { background: APP_TARGET === 'partner' }).then(s => { if (cancelled) s(); else stop = s; });
+    return () => { cancelled = true; stop?.(); };
+  }
   if (!hasGeolocation()) { onState('unavailable'); return () => {}; }
   let last = 0;
   const id = navigator.geolocation.watchPosition(

@@ -43,6 +43,7 @@ export class Db {
       CREATE TABLE IF NOT EXISTS announcements (id TEXT PRIMARY KEY, community_id TEXT NOT NULL, at TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, user_id TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS geocache (k TEXT PRIMARY KEY, v TEXT NOT NULL, at TEXT NOT NULL);
+      CREATE TABLE IF NOT EXISTS native_tokens (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS sms_log (id TEXT PRIMARY KEY, phone TEXT NOT NULL, text TEXT NOT NULL, at TEXT NOT NULL, provider TEXT NOT NULL);
     `);
   }
@@ -142,6 +143,11 @@ export class Db {
   usersInCommunity(communityId: string) { return this.rows<User>("SELECT data FROM users WHERE json_extract(data,'$.communityId')=?", communityId); }
   usersByRole(role: string) { return this.rows<User>('SELECT data FROM users WHERE role=?', role); }
   allUsers() { return this.rows<User>('SELECT data FROM users'); }
+
+  // ---- native push tokens (FCM)
+  putNativeToken(t: { userId: string; token: string; platform: string; app: string; at: string }) { this.sql.prepare('INSERT INTO native_tokens(token,user_id,data) VALUES(?,?,?) ON CONFLICT(token) DO UPDATE SET user_id=excluded.user_id,data=excluded.data').run(t.token, t.userId, JSON.stringify(t)); }
+  delNativeToken(token: string) { this.sql.prepare('DELETE FROM native_tokens WHERE token=?').run(token); }
+  nativeTokens(userId: string) { return this.rows<{ userId: string; token: string; platform: string; app: string; at: string }>('SELECT data FROM native_tokens WHERE user_id=?', userId); }
 
   // ---- push + sms + geocache
   putPushSub(s: PushSubscriptionRecord) { this.sql.prepare('INSERT INTO push_subs(endpoint,user_id,data) VALUES(?,?,?) ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id,data=excluded.data').run(s.endpoint, s.userId, JSON.stringify(s)); }
