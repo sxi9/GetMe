@@ -1,0 +1,34 @@
+/* Vulpes webfonts — product typefaces + Material Symbols icon font.
+   ZeroFox product UI uses Open Sans (text) + IBM Plex Mono (code/data).
+   Icons: Material Symbols Rounded (per vulpes-icons.md). Loaded from Google
+   Fonts CDN — this mirrors the codebase's @fontsource packages. */
+
+@import url('https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+
+/* Material Symbols Rounded — the Vulpes icon font (no fill by default,
+   fill axis used only for active nav state). */
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400,0..1,0&display=block');
+
+.material-symbols-rounded,
+.vulpes-icon {
+  font-family: 'Material Symbols Rounded';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  user-select: none;
+}
+
+.vulpes-icon.is-filled,
+.material-symbols-rounded.is-filled {
+  font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}

@@ -1,0 +1,131 @@
+/* ============================================================
+   VULPES COLOR ALIASES — ZeroFox
+   ------------------------------------------------------------
+   The authoritative token system now lives in
+   `tokens/vulpes-tokens.css`, generated verbatim from the
+   customer's DTCG files (uploads/vulpes-color/{light,dark}.tokens.json):
+   full primitive ramps + semantic (background/foreground) + brand +
+   categories, for BOTH themes.
+
+   This file is a THIN ALIAS LAYER: it maps the short, component-facing
+   names used across this design system's React components onto the real
+   semantic tokens. Because the semantic tokens already switch per theme
+   (`:root`/[data-zf-theme='vulpes-light'] vs [data-zf-theme='vulpes-dark']),
+   these aliases must be declared under the SAME theme selectors as the
+   semantic tokens they reference. A custom property whose value is
+   `var(--semantic-…)` is resolved on the element it is declared on, so a
+   `:root`-only alias would freeze to the light value and inherit that into
+   dark subtrees. Declaring the block under all three selectors lets each
+   themed subtree re-resolve the alias in its own context.
+   ============================================================ */
+
+:root,
+[data-zf-theme='vulpes-light'],
+[data-zf-theme='vulpes-dark'] {
+  /* ---- brand primitives (short names → real brand tokens) ---- */
+  --vulpes-blue:          var(--brand-fox-blue);         /* #002539 navy */
+  --vulpes-dark-blue:     var(--primitive-fox-blue-900); /* #131E29 */
+  --vulpes-light-blue:    var(--primitive-primary-blue-700); /* #0072CE */
+  --vulpes-cyber-blue:    var(--brand-cyber-blue);       /* #24E4EB */
+  --vulpes-red:           var(--brand-fox-red);          /* #E7282B */
+  --vulpes-dark-red:      var(--brand-dark-red);         /* #330608 */
+  --vulpes-magic:         var(--primitive-magic-700);    /* #8051FF */
+  --cyber-blue:           var(--brand-cyber-blue);
+
+  /* ---- neutral slate ramp (alias → real slate primitives) ---- */
+  --slate-50:  var(--primitive-slate-100);
+  --slate-100: var(--primitive-slate-100);
+  --slate-200: var(--primitive-slate-200);
+  --slate-300: var(--primitive-slate-300);
+  --slate-400: var(--primitive-slate-400);
+  --slate-500: var(--primitive-slate-500);
+  --slate-600: var(--primitive-slate-600);
+  --slate-700: var(--primitive-slate-700);
+  --slate-800: var(--primitive-slate-800);
+  --slate-900: var(--primitive-slate-900);
+  --slate-950: var(--primitive-slate-1100);
+
+  /* ---- surfaces / backgrounds ---- */
+  --surface-page:          var(--semantic-background-background);
+  --surface:               var(--semantic-background-surface);
+  --surface-raised:        var(--semantic-background-card);
+  --surface-sunken:        var(--semantic-background-surface-tertiary);
+  --surface-inverse:       var(--semantic-background-fill-inverse);
+  --surface-info-light:    var(--semantic-background-surface-info-light);
+  /* status tint surfaces (theme-aware light/dark) */
+  --surface-success-light:  var(--semantic-background-surface-success-light);
+  --surface-caution-light:  var(--semantic-background-surface-caution-light);
+  --surface-warning-light:  var(--semantic-background-surface-warning-light);
+  --surface-critical-light: var(--semantic-background-surface-critical-light);
+  --surface-magic-light:    var(--semantic-background-surface-magic-light);
+  --surface-border:        var(--semantic-background-border);
+  --surface-border-strong: var(--semantic-background-border-hover);
+  --fill-hover:            var(--semantic-background-hover);
+  --fill-active:           var(--semantic-background-fill-secondary-active);
+  --fill-secondary-hover:  var(--semantic-background-fill-secondary-hover);
+  --fill-secondary-active: var(--semantic-background-fill-secondary-active);
+  --fill-tertiary:         var(--semantic-background-fill-disabled);
+  --disabled-button:       var(--semantic-background-disabled-button);
+  --overlay-scrim:         var(--semantic-background-overlay);
+
+  /* ---- foreground / text / icon ---- */
+  --text:            var(--semantic-foreground-text);
+  --text-secondary:  var(--semantic-foreground-secondary-text);
+  --text-disabled:   var(--semantic-foreground-disabled-text);
+  /* status text/fg (theme-aware light/dark) */
+  --text-info:      var(--semantic-foreground-text-info);
+  --text-success:   var(--semantic-foreground-text-success);
+  --text-caution:   var(--semantic-foreground-text-caution);
+  --text-warning:   var(--semantic-foreground-text-warning);
+  --text-critical:  var(--semantic-foreground-text-critical);
+  --text-magic:     var(--semantic-foreground-text-magic);
+  --status-icon-neutral: var(--semantic-foreground-status-icon-pending);
+  /* constant neutral solid fill (pairs with --text-on-fill; stays constant
+     across themes by design, like severity fills) */
+  --fill-neutral: var(--primitive-slate-500);
+  --slider-off: var(--semantic-foreground-slider-off);
+  --divider:         var(--semantic-foreground-divider);
+  --icon:            var(--semantic-foreground-icon);
+  --icon-reverse:    var(--primitive-white);
+  --text-on-fill:    var(--semantic-foreground-brand-on-fill);
+
+  /* ---- brand action roles ---- */
+  --brand-primary-rest:         var(--semantic-foreground-brand-primary-rest);
+  --brand-primary-hover:        var(--semantic-foreground-brand-primary-hover);
+  --brand-primary-active:       var(--semantic-foreground-brand-primary-active);
+  --brand-primary-hover-alpha:  var(--semantic-foreground-brand-primary-hover-alpha);
+  --brand-primary-active-alpha: var(--semantic-foreground-brand-primary-active-alpha);
+  --brand-warn-rest:    var(--semantic-foreground-brand-warn-rest);
+  --brand-warn-hover:   var(--semantic-foreground-brand-warn-hover);
+  --brand-warn-active:  var(--semantic-foreground-brand-warn-active);
+  --brand-magic-rest:   var(--semantic-foreground-brand-magic-rest);
+  --brand-magic-hover:  var(--semantic-foreground-brand-magic-hover);
+  --brand-magic-active: var(--semantic-foreground-brand-magic-active);
+  --brand-confirm-rest: var(--semantic-foreground-status-icon-success);
+
+  /* ---- selection / focus / highlight ---- */
+  --focus-ring: var(--semantic-background-focus-outline);
+  --highlight:  var(--semantic-background-surface-warning-light);
+
+  /* ---- severity scale ----
+     Severity is NOT a native group in the customer's token file, so it is
+     composed here from the authoritative primitive ramps as a documented
+     critical→info gradient. Fills stay constant across themes (standard for
+     risk color). Contrast fg colors accompany each. */
+  --severity-critical:    var(--primitive-fox-red-800);      /* #C8101E */
+  --severity-critical-fg: var(--primitive-white);
+  --severity-high:        var(--primitive-fox-red-600);      /* #E7282B */
+  --severity-high-fg:     var(--primitive-white);
+  --severity-medium:      var(--primitive-orange-500);       /* #F27700 */
+  --severity-medium-fg:   var(--primitive-black-alpha-87);
+  --severity-low:         var(--primitive-yellow-orange-400);/* #FFB800 */
+  --severity-low-fg:      var(--primitive-black-alpha-87);
+  --severity-info:        var(--primitive-magenta-800);      /* #9F269F */
+  --severity-info-fg:     var(--primitive-white);
+  --severity-set-by-rule: var(--primitive-primary-blue-700); /* #0072CE */
+  --severity-set-by-rule-fg: var(--primitive-white);
+  --severity-none:        var(--primitive-slate-400);
+  --severity-none-fg:     var(--primitive-black-alpha-87);
+  --severity-off:         var(--primitive-slate-200);
+  --severity-off-fg:      var(--primitive-black-alpha-87);
+}

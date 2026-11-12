@@ -1,0 +1,88 @@
+/* ============================================================
+   VULPES NUMBERS — ZeroFox (authoritative)
+   ------------------------------------------------------------
+   Spacing / sizing / border tokens generated verbatim from the
+   customer's "vulpes-numbers" token files:
+     uploads/Value.tokens 2.json  → size primitives · space · border
+     uploads/Value.tokens.json    → component spacing (padding/gaps)
+
+   The `space-*` ladder aliases the hidden `size-*` primitive scale.
+   These names + values are now EXACT (previously an approximate
+   base-4 scale with shifted names). Component code references the
+   `--space-*` tokens; control heights use the `--size-control*`
+   aliases below.
+   ============================================================ */
+
+:root {
+  /* ---- size primitives (px) — the raw ladder ---- */
+  --size-primitive-0:    0px;
+  --size-primitive-0165: 0.66px;
+  --size-primitive-025:  1px;
+  --size-primitive-050:  2px;
+  --size-primitive-100:  4px;
+  --size-primitive-150:  6px;
+  --size-primitive-200:  8px;
+  --size-primitive-275:  11px;
+  --size-primitive-300:  12px;
+  --size-primitive-325:  13px;
+  --size-primitive-350:  14px;
+  --size-primitive-400:  16px;
+  --size-primitive-500:  20px;
+  --size-primitive-600:  24px;
+  --size-primitive-700:  28px;
+  --size-primitive-750:  30px;
+  --size-primitive-800:  32px;
+  --size-primitive-900:  36px;
+  --size-primitive-1000: 40px;
+  --size-primitive-1200: 48px;
+  --size-primitive-1600: 64px;
+  --size-primitive-2000: 80px;
+  --size-primitive-2400: 96px;
+  --size-primitive-2800: 112px;
+  --size-primitive-3200: 128px;
+
+  /* ---- space scale (aliases the size ladder) ---- */
+  --space-0:    var(--size-primitive-0);     /* 0  */
+  --space-025:  var(--size-primitive-025);   /* 1  */
+  --space-050:  var(--size-primitive-050);   /* 2  */
+  --space-100:  var(--size-primitive-100);   /* 4  */
+  --space-150:  var(--size-primitive-150);   /* 6  */
+  --space-200:  var(--size-primitive-200);   /* 8  */
+  --space-300:  var(--size-primitive-300);   /* 12 */
+  --space-400:  var(--size-primitive-400);   /* 16 — card padding + first-level gap */
+  --space-500:  var(--size-primitive-500);   /* 20 */
+  --space-600:  var(--size-primitive-600);   /* 24 */
+  --space-800:  var(--size-primitive-800);   /* 32 */
+  --space-1000: var(--size-primitive-1000);  /* 40 */
+  --space-1200: var(--size-primitive-1200);  /* 48 */
+  --space-1600: var(--size-primitive-1600);  /* 64 */
+  --space-2000: var(--size-primitive-2000);  /* 80 */
+  --space-2400: var(--size-primitive-2400);  /* 96 */
+  --space-3200: var(--size-primitive-3200);  /* 128 */
+
+  /* ---- component spacing (Value.tokens.json) ---- */
+  --table-cell-padding: var(--space-150);  /* 6  */
+  --button-group-gap:   var(--space-200);  /* 8  */
+  --card-padding:       var(--space-400);  /* 16 */
+  --card-gap:           var(--space-400);  /* 16 */
+
+  /* ---- border widths (border.width → size primitives) ---- */
+  --border-width-0165: var(--size-primitive-0165); /* 0.66 */
+  --border-width-025:  var(--size-primitive-025);  /* 1 (hairline) */
+  --border-width-050:  var(--size-primitive-050);  /* 2 */
+  --border-width-100:  var(--size-primitive-100);  /* 4 */
+
+  /* ---- control size aliases (Material heights) ---- */
+  --size-control:       var(--size-primitive-1000); /* 40 — regular button/input */
+  --size-control-small: var(--size-primitive-800);  /* 32 — small button */
+  --size-icon-button:   var(--size-primitive-800);  /* 32 */
+
+  /* ---- icon sizes (Material Symbols) ---- */
+  --icon-sm: 18px;
+  --icon-md: 20px;
+  --icon-lg: 24px;
+  --icon-xl: 32px;
+
+  /* layout breakpoints (Angular Flex) — reference:
+     xs 0-599 · sm 600-959 · md 960-1279 · lg 1280-1919 · xl 1920+ */
+}

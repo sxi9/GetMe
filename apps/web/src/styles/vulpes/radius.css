@@ -1,0 +1,26 @@
+/* ============================================================
+   VULPES RADIUS & ELEVATION — ZeroFox
+   Radius ✅ EXACT — confirmed against the customer's vulpes-numbers
+   border.radius set (uploads/Value.tokens 2.json): 0·2·4·8·16·24 + full.
+     cards & sidebars = 8px (--radius-200), inner objects = 4px (--radius-100).
+   Elevation ✅ from _button.scss Material shadow tokens.
+   ============================================================ */
+
+:root {
+  --radius-0:   0px;
+  --radius-050: 2px;
+  --radius-100: 4px;   /* inner objects, avatars, bordered blocks */
+  --radius-200: 8px;   /* cards, sidebars — the default */
+  --radius-400: 16px;
+  --radius-600: 24px;
+  --radius-full: 9999px;
+
+  /* Material elevation shadows (✅ exact from _button.scss) */
+  --elevation-1: 0 1px 1px 0 rgba(0,0,0,0.14), 0 2px 1px 0 rgba(0,0,0,0.12), 0 1px 3px 0 rgba(0,0,0,0.2);
+  --elevation-2: 0 4px 5px 0 rgba(0,0,0,0.14), 0 1px 10px 0 rgba(0,0,0,0.12), 0 2px 4px 0 rgba(0,0,0,0.2);
+
+  /* softer product-surface shadows (⚠️ derived for cards/menus) */
+  --shadow-card:  0 1px 2px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.10);
+  --shadow-menu:  0 4px 12px rgba(0,0,0,0.12), 0 2px 4px rgba(0,0,0,0.08);
+  --shadow-modal: 0 12px 32px rgba(0,0,0,0.22), 0 4px 8px rgba(0,0,0,0.12);
+}
