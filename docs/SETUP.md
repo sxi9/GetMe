@@ -137,3 +137,7 @@ Process management: `pm2 start "pnpm start" --name getme-api` or a systemd unit 
 | Geocoding returns "x km from HSR Layout Sector 2" | OpenStreetMap rate-limited the server; the gazetteer fallback is in use. It recovers automatically after a few minutes |
 | `node:sqlite` experimental warning | Harmless on Node 22; silent on Node 23+ |
 | Port 5173 or 4000 already in use | `PORT=4001 pnpm dev:api` and `API_PORT=4001 pnpm dev:web` |
+
+## 7. Theme
+
+All colours, type sizes, radii and shadows are CSS variables in `apps/web/src/styles/theme/tokens.css` (light and dark blocks) and the fonts in `theme/fonts.css`. To rebrand, edit those two files; no component changes are needed. The primary action colour is `--brand-primary-rest`, the header colour `--gm-chrome`, the accent `--gm-accent`.

@@ -47,7 +47,7 @@ export function MapPicker({ value, onChange, height = 260 }: { value: LatLng | n
   return (
     <div className="map-picker map" style={{ height }}>
       <div ref={el} style={{ width: '100%', height: '100%' }} />
-      <span className="vulpes-icon crosshair is-filled" aria-hidden="true">location_on</span>
+      <span className="gm-icon crosshair is-filled" aria-hidden="true">location_on</span>
       <div className="locate"><Button variant="protected" size="small" icon="my_location" onClick={locate} loading={gps === 'asking'}>{gps === 'denied' ? 'Location blocked' : gps === 'unavailable' ? 'No GPS' : 'My location'}</Button></div>
       {busy && <div className="eta" style={{ left: 'auto', right: 12, bottom: 'auto', top: 12 }}><Icon name="progress_activity" size={14} /> Finding the place…</div>}
     </div>

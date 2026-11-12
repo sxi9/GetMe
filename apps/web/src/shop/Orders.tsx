@@ -58,7 +58,7 @@ export function OrdersScreen() {
         <div className="row" style={{ gap: 8 }}><div className="grow b ellip">{o.id} · {o.customerName}</div><span className="mono" style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{timeStr(o.createdAt)}</span></div>
         <div className="row" style={{ gap: 8 }}><StatusChip status={chip.status} label={t(chip.label)} /><span className="cap ellip">{onRun && <Icon name="route" size={14} style={{ verticalAlign: -2 }} />} {partnerLine}</span></div>
         <div style={{ fontSize: 13, lineHeight: '18px' }}>{o.items.map(i => `${i.name} × ${i.qty}`).join(' · ')}</div>
-        {o.note && <div className="cap13"><span className="vulpes-icon" style={{ fontSize: 14, verticalAlign: -2 }}>sticky_note_2</span> {o.note}</div>}
+        {o.note && <div className="cap13"><span className="gm-icon" style={{ fontSize: 14, verticalAlign: -2 }}>sticky_note_2</span> {o.note}</div>}
         {(subs.length > 0 || missing.length > 0) && <div className="cap13">{subs.map(i => `${i.name} → ${i.substitute}`).join(', ')}{subs.length && missing.length ? ' · ' : ''}{missing.length ? `${t('Unavailable')}: ${missing.map(i => i.name).join(', ')}` : ''}</div>}
         {!subs.length && !missing.length && st !== 'done' && st !== 'cancelled' && <div className="cap">{o.subs ? t('Substitutes allowed') : t('No substitutes')}</div>}
         <div className="row" style={{ gap: 8 }}>

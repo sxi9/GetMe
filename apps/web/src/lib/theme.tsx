@@ -1,5 +1,5 @@
 // Appearance: light, dark or follow the system. Applies the Vulpes dark tokens
-// by setting data-zf-theme on <html>; persisted per device.
+// by setting data-theme on <html>; persisted per device.
 import { useCallback, useEffect, useState } from 'react';
 import { useT } from './i18n';
 import { Chip, Icon } from '../ui';
@@ -13,9 +13,9 @@ export function resolveDark(a: Appearance = readAppearance()): boolean { return 
 export function applyAppearance(a: Appearance = readAppearance()) {
   const dark = resolveDark(a);
   const el = document.documentElement;
-  el.setAttribute('data-zf-theme', dark ? 'vulpes-dark' : 'vulpes-light');
+  el.setAttribute('data-theme', dark ? 'dark' : 'light');
   el.style.colorScheme = dark ? 'dark' : 'light';
-  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', dark ? '#0b1218' : '#002539');
+  const meta = document.querySelector('meta[name="theme-color"]'); if (meta) meta.setAttribute('content', dark ? '#0E2F2A' : '#14534A');
 }
 /** Call once at startup: applies the saved choice and tracks the OS setting while on "system". */
 export function initAppearance() {

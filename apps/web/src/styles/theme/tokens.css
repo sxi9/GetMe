@@ -1,0 +1,175 @@
+/* GetMe theme — "Fresh and calm".
+   A mild palette for a neighbourhood delivery app: teal-green for actions
+   (fresh, trustworthy), warm off-white surfaces, a honey accent for the brand
+   mark, soft reds and ambers for status. Light and dark are keyed by
+   data-theme on <html>. Every component reads these names; change them here
+   and the whole product follows. */
+
+:root {
+  /* ---- type ---- */
+  --font-sans: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-icon: 'Material Symbols Rounded';
+  --weight-regular: 400; --weight-medium: 500; --weight-semibold: 600; --weight-light: 300;
+  --size-body-1: 16px; --lh-body-1: 24px;
+  --size-body-2: 14px; --lh-body-2: 20px;
+  --size-button: 14px; --lh-button: 20px;
+  --size-button-small: 12px; --lh-button-small: 16px;
+  --size-caption: 12px; --lh-caption: 18px;
+  --size-overline: 11px; --lh-overline: 14px;
+  --size-input: 15px; --lh-input: 20px;
+  --size-mono: 12px; --lh-mono: 18px;
+  --size-h1: 23px; --lh-h1: 32px; --size-h2: 20px; --lh-h2: 28px; --size-h3: 16px; --lh-h3: 22px; --size-h4: 14px; --lh-h4: 20px;
+  --letter-spacing-button: 0; --ls-body-2: 0;
+  --icon-sm: 16px; --icon-md: 20px; --icon-lg: 24px;
+
+  /* ---- spacing (4px base) ---- */
+  --space-100: 4px; --space-200: 8px; --space-300: 12px; --space-400: 16px; --space-500: 20px; --space-600: 24px; --space-800: 32px;
+  --size-control: 44px; --size-control-small: 32px; --size-icon-button: 36px;
+  --card-padding: 16px; --card-gap: 16px;
+
+  /* ---- radius (softer than a data product) ---- */
+  --radius-050: 4px; --radius-100: 10px; --radius-200: 14px; --radius-400: 20px; --radius-600: 28px; --radius-full: 9999px;
+
+  /* ---- shadows ---- */
+  --shadow-card: 0 1px 2px rgba(30,42,40,.05), 0 2px 8px rgba(30,42,40,.06);
+  --shadow-menu: 0 6px 20px rgba(30,42,40,.14), 0 2px 6px rgba(30,42,40,.08);
+  --shadow-modal: 0 16px 40px rgba(30,42,40,.24), 0 4px 10px rgba(30,42,40,.12);
+  --elevation-1: 0 1px 2px rgba(30,42,40,.12), 0 1px 3px rgba(30,42,40,.16);
+  --elevation-2: 0 4px 8px rgba(30,42,40,.14), 0 2px 4px rgba(30,42,40,.12);
+}
+
+/* ---------- light ---------- */
+:root, [data-theme='light'] {
+  color-scheme: light;
+  --gm-chrome: #14534A;           /* header, hero, call screen */
+  --gm-chrome-text: #FFFFFF;
+  --gm-accent: #F4B942;           /* honey: brand mark, active top-tab underline */
+
+  --surface-page: #F7F5F0;        /* warm off-white */
+  --surface: #FFFFFF;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #EFEBE4;
+  --surface-inverse: #1E2A28;
+  --surface-border: rgba(30,42,40,.10);
+  --surface-border-strong: rgba(30,42,40,.22);
+  --divider: rgba(30,42,40,.08);
+  --overlay-scrim: rgba(20,30,28,.45);
+
+  --text: #1E2A28;
+  --text-secondary: #5F6E6B;
+  --text-disabled: #9BA8A5;
+  --text-on-fill: #FFFFFF;
+  --icon: #5F6E6B;
+  --icon-reverse: #FFFFFF;
+
+  --brand-primary-rest: #0E8C73;
+  --brand-primary-hover: #0B7560;
+  --brand-primary-active: #095E4D;
+  --brand-primary-hover-alpha: rgba(14,140,115,.08);
+  --brand-primary-active-alpha: rgba(14,140,115,.14);
+  --brand-confirm-rest: #2F9E5F;
+  --brand-warn-rest: #D6494E;
+  --brand-warn-hover: #B93C40;
+  --brand-danger: #D6494E;        /* destination pins, SOS */
+  --brand-magic-rest: #7B61FF;
+
+  --severity-critical: #B3353A;
+  --severity-high: #D6494E;
+  --severity-medium: #E8711C;
+  --severity-low: #F0B429;        /* stars, caution flags */
+  --severity-info: #0E8C73;
+  --status-icon-neutral: #8C9996;
+
+  --surface-info-light: #E3F3EF;
+  --surface-success-light: #E6F5EC;
+  --surface-caution-light: #FBF1DC;
+  --surface-warning-light: #FCE9DA;
+  --surface-critical-light: #FBE5E6;
+  --surface-magic-light: #EEEAFF;
+  --text-info: #0B6E5B;
+  --text-success: #237A49;
+  --text-caution: #8A5A0A;
+  --text-warning: #9A4A0E;
+  --text-critical: #A32E33;
+  --text-magic: #4F3BC7;
+
+  --fill-hover: rgba(30,42,40,.05);
+  --fill-active: rgba(30,42,40,.09);
+  --fill-tertiary: #F0EDE7;
+  --fill-secondary-hover: rgba(30,42,40,.06);
+  --fill-secondary-active: rgba(30,42,40,.10);
+  --disabled-button: #DED9D0;
+  --slider-off: #C9C3B8;
+  --focus-ring: #0E8C73;
+  --chart-soft: #BFE4DA;          /* bar charts: non-highlighted bars */
+}
+
+/* ---------- dark ---------- */
+[data-theme='dark'] {
+  color-scheme: dark;
+  --gm-chrome: #0E2F2A;
+  --gm-chrome-text: #FFFFFF;
+  --gm-accent: #F4B942;
+
+  --surface-page: #121715;
+  --surface: #1B2320;
+  --surface-raised: #212B27;
+  --surface-sunken: #0E1311;
+  --surface-inverse: #EDF0EC;
+  --surface-border: rgba(255,255,255,.10);
+  --surface-border-strong: rgba(255,255,255,.22);
+  --divider: rgba(255,255,255,.08);
+  --overlay-scrim: rgba(0,0,0,.6);
+
+  --text: #EDF0EC;
+  --text-secondary: #A7B3AE;
+  --text-disabled: #6E7A75;
+  --text-on-fill: #08201B;
+  --icon: #A7B3AE;
+  --icon-reverse: #FFFFFF;
+
+  --brand-primary-rest: #3DBFA3;
+  --brand-primary-hover: #5ACBB3;
+  --brand-primary-active: #2BA88E;
+  --brand-primary-hover-alpha: rgba(61,191,163,.12);
+  --brand-primary-active-alpha: rgba(61,191,163,.18);
+  --brand-confirm-rest: #4CC27D;
+  --brand-warn-rest: #F06B70;
+  --brand-warn-hover: #F58488;
+  --brand-danger: #F06B70;
+  --brand-magic-rest: #A596FF;
+
+  --severity-critical: #F06B70;
+  --severity-high: #F06B70;
+  --severity-medium: #F2924C;
+  --severity-low: #F6C65A;
+  --severity-info: #3DBFA3;
+  --status-icon-neutral: #7E8B87;
+
+  --surface-info-light: rgba(61,191,163,.14);
+  --surface-success-light: rgba(76,194,125,.14);
+  --surface-caution-light: rgba(246,198,90,.14);
+  --surface-warning-light: rgba(242,146,76,.14);
+  --surface-critical-light: rgba(240,107,112,.14);
+  --surface-magic-light: rgba(165,150,255,.14);
+  --text-info: #7ED8C4;
+  --text-success: #8FDBAC;
+  --text-caution: #F6C65A;
+  --text-warning: #F5B07F;
+  --text-critical: #F7A0A3;
+  --text-magic: #C7BDFF;
+
+  --fill-hover: rgba(255,255,255,.06);
+  --fill-active: rgba(255,255,255,.10);
+  --fill-tertiary: #263230;
+  --fill-secondary-hover: rgba(255,255,255,.06);
+  --fill-secondary-active: rgba(255,255,255,.10);
+  --disabled-button: #2E3A36;
+  --slider-off: #4A5753;
+  --focus-ring: #3DBFA3;
+  --chart-soft: #2C5A50;
+  --shadow-card: none;
+  --shadow-menu: 0 8px 24px rgba(0,0,0,.5);
+  --shadow-modal: 0 16px 40px rgba(0,0,0,.6);
+}

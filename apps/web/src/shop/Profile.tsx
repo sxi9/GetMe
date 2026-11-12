@@ -67,7 +67,7 @@ export function ProfileScreen() {
       <Body style={{ paddingBottom: 48 }}>
         <input ref={shopFile} type="file" accept="image/*" capture="environment" hidden onChange={pickShopPhoto} />
         <div className="card" style={{ padding: 0, overflow: 'hidden', gap: 0 }}>
-          {shop?.photoUrl ? <img className="photo" src={shop.photoUrl} alt="" /> : <div className="photo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 4, color: 'var(--text-secondary)', fontSize: 13 }}><span className="vulpes-icon" style={{ fontSize: 28 }}>storefront</span>{t('No shop photo yet')}</div>}
+          {shop?.photoUrl ? <img className="photo" src={shop.photoUrl} alt="" /> : <div className="photo" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 4, color: 'var(--text-secondary)', fontSize: 13 }}><span className="gm-icon" style={{ fontSize: 28 }}>storefront</span>{t('No shop photo yet')}</div>}
           <div className="row" style={{ padding: '12px 16px' }}>
             <Avatar initials={(user?.name ?? 'S').split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase()} src={user?.photoUrl} size="lg" />
             <div className="grow"><div className="b ellip">{shop?.name}</div><div className="cap">{t('Shown to customers on your shop card')}</div></div>
@@ -84,7 +84,7 @@ export function ProfileScreen() {
         </div>
         <div className="card" style={{ gap: 12 }}>
           <div className="row" style={{ gap: 10 }}>
-            <div className="tile"><span className="vulpes-icon" style={{ fontSize: 20 }}>groups</span></div>
+            <div className="tile"><span className="gm-icon" style={{ fontSize: 20 }}>groups</span></div>
             <div className="grow"><div className="b">{community ? community.name : t('Community')}</div><div className="cap">{community ? t('{n} members · code {code}', { n: community.memberCount, code: community.joinCode }) : t('Join your apartment society or village to post offers to residents')}</div></div>
           </div>
           <div className="row" style={{ gap: 8 }}>
@@ -97,7 +97,7 @@ export function ProfileScreen() {
           <div className="list" style={{ border: 'none' }}><AppearanceRow /></div>
           <div className="divider" />
           <div className="row" style={{ gap: 10 }}>
-            <span className="vulpes-icon" style={{ fontSize: 22, color: 'var(--icon)' }}>translate</span>
+            <span className="gm-icon" style={{ fontSize: 22, color: 'var(--icon)' }}>translate</span>
             <div className="grow"><div className="b">{t('Language')}</div></div>
           </div>
           <div className="wrap">{LANGS.map(l => <Chip key={l.id} label={l.label} selected={lang === l.id} onClick={() => changeLang(l.id)} />)}</div>
@@ -117,7 +117,7 @@ export function ProfileScreen() {
       <Sheet open={edit === 'location'} onClose={() => setEdit(null)} title={t('Shop location')}>
         <div className="cap13">{t('Move the map until the pin sits on your shop door. Partners navigate to this point.')}</div>
         <MapPicker value={pin} height={240} onChange={(pos, hit) => { setPin(pos); if (hit) { setPinHit(hit); setF(x => ({ ...x, address: x.address || hit.line })); regionAt(pos).then(setRegion).catch(() => {}); } }} />
-        {pinHit && <div className="cap13"><span className="vulpes-icon" style={{ fontSize: 14, verticalAlign: -2 }}>place</span> {pinHit.line}{pinHit.area ? ` · ${pinHit.area}` : ''}{region ? ` · ${t(region.name)}` : ''}</div>}
+        {pinHit && <div className="cap13"><span className="gm-icon" style={{ fontSize: 14, verticalAlign: -2 }}>place</span> {pinHit.line}{pinHit.area ? ` · ${pinHit.area}` : ''}{region ? ` · ${t(region.name)}` : ''}</div>}
         <Input label={t('Address as customers read it')} value={f.address} onChange={set('address')} placeholder={t('Shop no., street, landmark')} prefixIcon="storefront" />
         <Button color="primary" size="tall" fullWidth onClick={save} loading={busy} disabled={!pin}>{t('Save location')}</Button>
       </Sheet>

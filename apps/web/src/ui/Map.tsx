@@ -26,7 +26,7 @@ const TRAFFIC_COLOR: Record<TrafficLevel, string> = { light: '#0F9135', moderate
 const div = (cls: string, inner = '', size = 22) => L.divIcon({ className: '', html: `<div class="${cls}">${inner}</div>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 const vehicleIcon = (vehicle: string | null | undefined, heading: number | null | undefined, label?: string | null) => L.divIcon({
   className: 'vehicle-marker',
-  html: `<div class="vehicle"><div class="ring"></div><div class="arrow" style="transform:rotate(${heading ?? 0}deg)"><span class="vulpes-icon tip is-filled">navigation</span></div><div class="body"><span class="vulpes-icon">${VEHICLE_ICON[vehicle ?? ''] ?? 'two_wheeler'}</span></div>${label ? `<div class="lbl">${label}</div>` : ''}</div>`,
+  html: `<div class="vehicle"><div class="ring"></div><div class="arrow" style="transform:rotate(${heading ?? 0}deg)"><span class="gm-icon tip is-filled">navigation</span></div><div class="body"><span class="gm-icon">${VEHICLE_ICON[vehicle ?? ''] ?? 'two_wheeler'}</span></div>${label ? `<div class="lbl">${label}</div>` : ''}</div>`,
   iconSize: [44, 44], iconAnchor: [22, 22],
 });
 
@@ -82,7 +82,7 @@ export function Map({ center, a, aIcon = 'storefront', b, bIcon = 'home', courie
   return (
     <div className={'map' + (tall ? ' tall' : '')}>
       <div ref={el} style={{ width: '100%', height: '100%' }} />
-      {eta && <div className={'eta' + (traffic ? ' traffic-' + traffic : '')}><span className="vulpes-icon" style={{ fontSize: 14 }}>{traffic === 'heavy' ? 'traffic' : traffic === 'moderate' ? 'schedule' : 'bolt'}</span>{eta}{traffic && <span className="tl">{traffic === 'heavy' ? 'heavy traffic' : traffic === 'moderate' ? 'moderate traffic' : 'light traffic'}</span>}</div>}
+      {eta && <div className={'eta' + (traffic ? ' traffic-' + traffic : '')}><span className="gm-icon" style={{ fontSize: 14 }}>{traffic === 'heavy' ? 'traffic' : traffic === 'moderate' ? 'schedule' : 'bolt'}</span>{eta}{traffic && <span className="tl">{traffic === 'heavy' ? 'heavy traffic' : traffic === 'moderate' ? 'moderate traffic' : 'light traffic'}</span>}</div>}
     </div>
   );
 }

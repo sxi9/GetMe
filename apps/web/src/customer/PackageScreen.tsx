@@ -32,7 +32,7 @@ export function PackageScreen() {
           <Button variant="text" color="primary" size="small" onClick={() => setPickup(true)}>{t('Change')}</Button>
         </div>
         <div className="card row clickable" onClick={() => setDrop(true)} style={{ borderColor: pkg.drop ? undefined : 'var(--brand-primary-rest)' }}>
-          <Icon name="person_pin_circle" size={22} color="var(--brand-fox-red)" />
+          <Icon name="person_pin_circle" size={22} color="var(--brand-danger)" />
           <div className="grow"><div className="b">{t('Drop')} · {pkg.drop ? (pkg.drop.label === 'Pinned' ? t('Pinned on the map') : t(pkg.drop.label)) : t('Where does it go?')}</div><div className="cap13">{pkg.drop ? fmtAddress(pkg.drop) : t('Drop a pin, add a landmark and how to hand it over')}</div></div>
           <Icon name={pkg.drop ? 'edit' : 'add_location_alt'} size={22} color="var(--brand-primary-rest)" />
         </div>

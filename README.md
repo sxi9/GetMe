@@ -2,7 +2,7 @@
 
 Hyperlocal delivery for Bengaluru: a customer writes a shopping list (or orders from a nearby shop's catalogue, or sends a package), picks how a delivery partner is found, and tracks the partner live until a code-verified handover. Three apps, one backend.
 
-Built from the design handoff in `design/` (the clickable prototype, seed data and spec are kept there for reference).
+Built from the design handoff in `design/` (the clickable prototype, seed data and spec are kept there for reference). The handoff's screens and flows are kept; its design-system tokens were replaced by GetMe's own theme.
 
 ## Layout
 
@@ -10,7 +10,7 @@ Built from the design handoff in `design/` (the clickable prototype, seed data a
 | --- | --- |
 | `packages/core` | Pure TypeScript domain: types, the order state machine for all three roles, pricing and settlement, dispatch rules, validation. Unit-tested, no I/O. |
 | `apps/api` | Fastify API + WebSocket realtime on SQLite (`node:sqlite`, no native deps). Auth, orders, dispatch engine, chat, wallet/ledger, shops, partners, subscriptions, public tracking links. |
-| `apps/web` | Vite + React mobile web app with four entry points: `/customer`, `/partner`, `/shop`, `/admin`, plus the public `/track/:token` page. Styled 1:1 from the Vulpes design tokens in the handoff. |
+| `apps/web` | Vite + React mobile web app with four entry points: `/customer`, `/partner`, `/shop`, `/admin`, plus the public `/track/:token` page. Styled with GetMe's own token layer (`apps/web/src/styles/theme`): a mild teal-green and warm off-white palette, Manrope type, light and dark. |
 | `e2e` | Playwright end-to-end run across the three roles. |
 
 ## Guides
@@ -61,7 +61,7 @@ GetMe is designed for apartments, hill stations and villages as much as for the 
 - **Live vehicle and traffic.** The partner's heading and speed are derived from successive fixes; the map shows a rotating bike, scooter or cycle marker with a trail, and the ETA blends a time-of-day traffic profile with the partner's observed speed.
 - **Crypto.** Customers can pay in USDT or USDC: an invoice is created once the final bill is known, the partner can complete the handover only after it confirms, and partners and shops are still settled in rupees. Simulated provider in development; NOWPayments with a signed webhook when keys are set.
 - **Languages.** English, Kannada and Hindi dictionaries cover every string in the four apps.
-- **Dark mode.** Light, dark or follow the system, from any Profile. Built on the Vulpes dark tokens; the map tiles are tinted to match.
+- **Dark mode.** Light, dark or follow the system, from any Profile. Both palettes live in one token file; the map tiles are tinted to match.
 
 ## How it works
 

@@ -145,7 +145,7 @@ export function Job() {
 
         {o.status === 'to_customer' && (
           <div className="card">
-            <div className="row" style={{ alignItems: 'flex-start' }}><Icon name={parcel ? 'person_pin_circle' : 'home'} size={24} color="var(--brand-fox-red)" /><div className="grow"><div className="b">{dropName}</div><div style={{ fontSize: 13, lineHeight: '18px' }}>{addr}</div>{o.address.area && <div className="cap">{o.address.area}</div>}{parcel && o.receiver?.phone ? <div className="cap">{t('call via GetMe')}</div> : null}</div></div>
+            <div className="row" style={{ alignItems: 'flex-start' }}><Icon name={parcel ? 'person_pin_circle' : 'home'} size={24} color="var(--brand-danger)" /><div className="grow"><div className="b">{dropName}</div><div style={{ fontSize: 13, lineHeight: '18px' }}>{addr}</div>{o.address.area && <div className="cap">{o.address.area}</div>}{parcel && o.receiver?.phone ? <div className="cap">{t('call via GetMe')}</div> : null}</div></div>
             {o.address.gatePhotoUrl && <div className="row" style={{ gap: 10 }}><img className="thumb" src={API_URL + o.address.gatePhotoUrl} alt="" style={{ width: 64, height: 64 }} /><div className="cap13">{t('Photo of the gate / door so you recognise it.')}</div></div>}
             {directions && <AlertBanner type="info" icon="signpost" action={<Button size="small" variant="text" icon="volume_up" onClick={speak}>{t('Read aloud')}</Button>}>{directions}</AlertBanner>}
             {handoff !== 'in_person' && <AlertBanner type="neutral" icon={handoff === 'gate' ? 'door_sliding' : 'door_front'}>{handoff === 'gate' ? t('Leave at the gate / security. Take a photo of the handover.') : t('Leave at the door. Take a photo once it is placed.')}</AlertBanner>}
