@@ -1,3 +1,4 @@
+import { AppearanceRow } from '../lib/theme';
 import { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LANGS, TOPUPS, PROMOS, fmt, initials, type Address } from '@getme/core';
@@ -61,6 +62,7 @@ export function Profile() {
           <Row icon="account_balance_wallet" label={t('Payment methods')} caption={`UPI · ${t('Card')} •••• 4421 · ${t('Wallet')} ${fmt(me.wallet ?? 0)}`} onClick={() => setSheet('pay')} />
           <Row icon="sell" label={t('Promo codes')} caption={PROMOS.map(p => p.code).join(', ') + ' ' + t('available')} onClick={() => setSheet('promo')} />
           <div className="item"><Icon name="notifications" size={22} color="var(--icon)" /><div className="grow"><div className="b">{t('Push notifications')}</div><div className="cap">{permLabel}</div></div><Toggle checked={u.pushEnabled && perm !== 'denied'} onChange={setPush} /></div>
+          <AppearanceRow />
           <div className="item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}><div className="row"><Icon name="translate" size={22} color="var(--icon)" /><div className="grow b">{t('Language')}</div></div><div className="wrap" style={{ paddingLeft: 34 }}>{LANGS.map(l => <Chip key={l.id} label={l.label} selected={lang === l.id} onClick={() => changeLang(l.id)} />)}</div></div>
         </div>
         <div className="list"><Row icon="help" label={t('Help and support')} onClick={() => setSheet('help')} /><Row icon="description" label={t('Terms and privacy')} onClick={() => setSheet('terms')} /></div>

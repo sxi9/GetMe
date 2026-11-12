@@ -7,6 +7,7 @@ import { SignIn } from './lib/auth';
 import { Phone } from './lib/phone';
 import { I18nProvider } from './lib/i18n';
 import { registerSw } from './lib/push';
+import { initAppearance, useAppearance } from './lib/theme';
 import { Icon } from './ui';
 const CustomerApp = lazy(() => import('./customer/App').then(m => ({ default: m.CustomerApp })));
 const PartnerApp = lazy(() => import('./partner/App').then(m => ({ default: m.PartnerApp })));
@@ -29,6 +30,7 @@ function Gate({ role }: { role: Role }) {
   return <Phone>{!session ? <SignIn role={role} /> : <Suspense fallback={<div className="body" />}>{role === 'customer' ? <CustomerApp /> : role === 'partner' ? <PartnerApp /> : role === 'shop' ? <ShopApp /> : <AdminApp />}</Suspense>}</Phone>;
 }
 function Landing() {
+  const { appearance, setAppearance } = useAppearance();
   const roles: { to: string; icon: string; title: string; text: string }[] = [
     { to: '/customer', icon: 'near_me', title: 'GetMe', text: 'Customer app · lists, shops, packages' },
     { to: '/partner', icon: 'two_wheeler', title: 'GetMe Partner', text: 'Delivery partner app · requests, jobs, earnings' },
@@ -38,7 +40,8 @@ function Landing() {
   return (
     <div className="landing">
       <div className="col" style={{ width: '100%', maxWidth: 420, gap: 16 }}>
-        <div className="row" style={{ gap: 10 }}><Icon name="near_me" size={28} color="var(--brand-primary-rest)" /><span className="h23" style={{ color: 'var(--brand-fox-blue)' }}>GetMe</span></div>
+        <div className="between"><div className="row" style={{ gap: 10 }}><Icon name="near_me" size={28} color="var(--brand-primary-rest)" /><span className="h23" style={{ color: 'var(--text)' }}>GetMe</span></div>
+          <button type="button" aria-label="Toggle dark mode" onClick={() => setAppearance(appearance === 'dark' ? 'light' : 'dark')} style={{ border: '1px solid var(--surface-border-strong)', background: 'var(--surface)', color: 'var(--text)', borderRadius: 999, padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', font: '400 12px/16px var(--font-sans)' }}><Icon name={appearance === 'dark' ? 'light_mode' : 'dark_mode'} size={16} />{appearance === 'dark' ? 'Light' : 'Dark'}</button></div>
         <div className="cap13">Local delivery for Bengaluru. Three apps, one backend. Open each app in its own tab to run a live order across roles.</div>
         <div className="list">{roles.map(r => <Link key={r.to} to={r.to} className="item clickable" style={{ textDecoration: 'none', color: 'inherit' }}><div className="tile"><Icon name={r.icon} size={20} /></div><div className="grow"><div className="b">{r.title}</div><div className="cap">{r.text}</div></div><Icon name="chevron_right" size={22} color="var(--icon)" /></Link>)}</div>
         <div className="cap">Demo accounts sign in with code 1234. Customer 98450 12345 · Partner 99860 44112 · Runner 99860 44116 · Shop 98860 71234 · Ops 90000 00000.</div>
@@ -47,6 +50,7 @@ function Landing() {
   );
 }
 void registerSw();
+initAppearance();
 // Keep one React root even if this module is re-evaluated (Vite HMR in dev).
 const w = window as any;
 const root = w.__getmeRoot ?? (w.__getmeRoot = createRoot(document.getElementById('root')!));

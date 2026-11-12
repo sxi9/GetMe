@@ -1,3 +1,4 @@
+import { AppearanceRow } from '../lib/theme';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Vehicle } from '@getme/core';
@@ -59,6 +60,7 @@ export function Profile() {
           <Row icon="add_road" label={t('My trips')} caption={t('Announce a trip and take orders along')} onClick={() => nav('/partner/runs')} />
           <Row icon="account_balance" label={t('Payouts')} caption={`${t('Daily to SBI •••• 8821')} · ${t('balance')} ${(earnings?.balance ?? 0) < 0 ? '−' : ''}₹${Math.abs(earnings?.balance ?? 0)}`} onClick={() => setSheet('payouts')} />
           <div className="item"><Icon name="notifications_active" size={22} color="var(--icon)" /><div className="grow"><div style={{ fontWeight: 600 }}>{t('Push notifications')}</div><div className="cap">{t('Requests and trip updates even when the app is closed')}</div></div><Toggle checked={push} onChange={togglePush} /></div>
+          <AppearanceRow />
           <Row icon="call" label={t('Mobile')} caption={u.phone ? `+91 ${u.phone}` : u.email ?? ''} chevron={false} />
         </div>
         <Button variant="outlined" color="warn" fullWidth icon="logout" onClick={signOut}>{t('Log out')}</Button>

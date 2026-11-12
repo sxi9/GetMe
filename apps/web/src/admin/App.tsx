@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { AppearanceRow } from '../lib/theme';
 import { useStore } from '../lib/store';
 import { useT } from '../lib/i18n';
 import { NotificationBell } from '../lib/notifications';
@@ -46,6 +47,7 @@ function Shell() {
       </Routes>
       <Sheet open={profile} onClose={() => setProfile(false)} title={u?.name ?? t('Ops')}>
         <div className="cap13">{t('Signed in as GetMe ops')}{u?.phone ? ` · +91 ${u.phone}` : ''}{u?.email ? ` · ${u.email}` : ''}</div>
+        <div className="list"><AppearanceRow /></div>
         <Button variant="outlined" color="warn" fullWidth icon="logout" onClick={signOut}>{t('Log out')}</Button>
       </Sheet>
     </>

@@ -1,3 +1,4 @@
+import { AppearanceRow } from '../lib/theme';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LANGS, fmt, type LatLng, type RegionProfile } from '@getme/core';
@@ -92,6 +93,8 @@ export function ProfileScreen() {
         </div>
         <div className="card" style={{ gap: 12 }}>
           <ToggleRow icon="notifications_active" label={t('Push notifications')} caption={perm === 'unsupported' ? t('Not supported in this browser') : perm === 'denied' ? t('Blocked in browser settings') : pushOn ? t('New orders reach you even when the app is closed') : t('Get new orders even when the app is closed')} checked={pushOn} onChange={togglePush} />
+          <div className="divider" />
+          <div className="list" style={{ border: 'none' }}><AppearanceRow /></div>
           <div className="divider" />
           <div className="row" style={{ gap: 10 }}>
             <span className="vulpes-icon" style={{ fontSize: 22, color: 'var(--icon)' }}>translate</span>

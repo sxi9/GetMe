@@ -155,3 +155,29 @@ textarea.ta:focus { border-color: var(--focus-ring); box-shadow: 0 0 0 1px var(-
 .map .eta { display: inline-flex; align-items: center; gap: 4px; }
 .map .eta .tl { font-weight: 400; color: var(--text-secondary); margin-left: 2px; }
 @keyframes gm-ring { 0% { transform: scale(.6); opacity: .45 } 100% { transform: scale(1.6); opacity: 0 } }
+
+/* ---------- dark appearance (Vulpes dark tokens via [data-zf-theme='vulpes-dark'] on <html>) ---------- */
+[data-zf-theme='vulpes-dark'] { --gm-chrome: var(--primitive-fox-blue-900, #131e29); --gm-accent: #24e4eb; }
+[data-zf-theme='vulpes-dark'] body { background: #05090d; }
+[data-zf-theme='vulpes-dark'] .phone { box-shadow: 0 24px 60px rgba(0,0,0,.7), 0 0 0 10px #0d1117, 0 0 0 12px #2a2f36; }
+[data-zf-theme='vulpes-dark'] .chrome { background: var(--primitive-fox-blue-900, #131e29); }
+[data-zf-theme='vulpes-dark'] .toptabs { background: var(--primitive-fox-blue-900, #131e29); }
+[data-zf-theme='vulpes-dark'] .call-overlay { background: var(--primitive-fox-blue-900, #131e29); }
+[data-zf-theme='vulpes-dark'] .card, [data-zf-theme='vulpes-dark'] .list, [data-zf-theme='vulpes-dark'] .option { box-shadow: none; }
+[data-zf-theme='vulpes-dark'] .scrim { background: rgba(0,0,0,.6); }
+[data-zf-theme='vulpes-dark'] .bubble.them { background: var(--surface-raised); }
+[data-zf-theme='vulpes-dark'] .map { background: #11181f; }
+[data-zf-theme='vulpes-dark'] .leaflet-tile-pane { filter: invert(1) hue-rotate(180deg) brightness(.9) contrast(.9) saturate(.6); }
+[data-zf-theme='vulpes-dark'] .leaflet-control-attribution { background: rgba(0,0,0,.55); color: #aab4bf; }
+[data-zf-theme='vulpes-dark'] .leaflet-control-attribution a { color: #8ab4ff; }
+[data-zf-theme='vulpes-dark'] .bar .v { background: var(--primitive-primary-blue-800, #1f4b7a); }
+[data-zf-theme='vulpes-dark'] .bar .v.hi { background: var(--brand-primary-rest); }
+[data-zf-theme='vulpes-dark'] .pin { border-color: #1a222b; }
+[data-zf-theme='vulpes-dark'] .dot-me, [data-zf-theme='vulpes-dark'] .dot-pool { border-color: #1a222b; }
+[data-zf-theme='vulpes-dark'] .vehicle .body { border-color: #1a222b; background: var(--brand-primary-rest); color: #fff; }
+[data-zf-theme='vulpes-dark'] .vehicle .lbl { background: var(--surface-raised); }
+[data-zf-theme='vulpes-dark'] .drop { background: var(--surface-raised); }
+[data-zf-theme='vulpes-dark'] .toast { background: var(--surface-raised); }
+[data-zf-theme='vulpes-dark'] .offline-bar { background: rgba(242,119,0,.18); color: #f6b26b; }
+[data-zf-theme='vulpes-dark'] img.photo, [data-zf-theme='vulpes-dark'] img.thumb { filter: brightness(.9); }
+[data-zf-theme='vulpes-dark'] .landing { color: var(--text); }

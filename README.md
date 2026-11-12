@@ -13,6 +13,12 @@ Built from the design handoff in `design/` (the clickable prototype, seed data a
 | `apps/web` | Vite + React mobile web app with four entry points: `/customer`, `/partner`, `/shop`, `/admin`, plus the public `/track/:token` page. Styled 1:1 from the Vulpes design tokens in the handoff. |
 | `e2e` | Playwright end-to-end run across the three roles. |
 
+## Guides
+
+- [Setup guide](docs/SETUP.md): local run, phone testing, configuration, production deployment, troubleshooting.
+- [Admin panel guide](docs/ADMIN.md): every Ops tab and action, verification checklist, refunds, region tuning, CLI.
+- [Roadmap](docs/ROADMAP.md): what modern delivery apps have that GetMe does not yet.
+
 ## Run it
 
 ```bash
@@ -55,6 +61,7 @@ GetMe is designed for apartments, hill stations and villages as much as for the 
 - **Live vehicle and traffic.** The partner's heading and speed are derived from successive fixes; the map shows a rotating bike, scooter or cycle marker with a trail, and the ETA blends a time-of-day traffic profile with the partner's observed speed.
 - **Crypto.** Customers can pay in USDT or USDC: an invoice is created once the final bill is known, the partner can complete the handover only after it confirms, and partners and shops are still settled in rupees. Simulated provider in development; NOWPayments with a signed webhook when keys are set.
 - **Languages.** English, Kannada and Hindi dictionaries cover every string in the four apps.
+- **Dark mode.** Light, dark or follow the system, from any Profile. Built on the Vulpes dark tokens; the map tiles are tinted to match.
 
 ## How it works
 
