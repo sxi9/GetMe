@@ -79,6 +79,15 @@ button { font-family: inherit; }
 .toptab.active { color: #fff; border-bottom-color: var(--gm-accent); }
 .toast { position: absolute; top: calc(10px + env(safe-area-inset-top)); left: 12px; right: 12px; z-index: 40; background: var(--surface); border: 1px solid var(--surface-border); border-radius: 8px; box-shadow: var(--shadow-menu); padding: 10px 12px; display: flex; gap: 10px; align-items: center; animation: gm-toast .25s ease; cursor: pointer; }
 @media (min-width: 480px) and (min-height: 700px) { .toast { top: 54px; } }
+.toast-stack { position: absolute; top: calc(8px + env(safe-area-inset-top)); left: 12px; right: 12px; z-index: 40; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+.toast-stack .toast { pointer-events: auto; }
+@media (min-width: 480px) and (min-height: 700px) { .toast-stack { top: 50px; } }
+.offline-bar { background: var(--surface-caution-light); color: var(--text-caution); font-size: 12px; line-height: 16px; padding: 6px 12px; display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.photo { width: 100%; height: 140px; object-fit: cover; border-radius: 8px 8px 0 0; display: block; background: var(--surface-sunken); }
+.thumb { width: 44px; height: 44px; border-radius: 4px; object-fit: cover; background: var(--surface-sunken); flex-shrink: 0; }
+.map-picker { position: relative; }
+.map-picker .crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -100%); z-index: 500; pointer-events: none; color: var(--brand-fox-red); font-size: 36px; filter: drop-shadow(0 2px 2px rgba(0,0,0,.3)); }
+.map-picker .locate { position: absolute; right: 10px; bottom: 10px; z-index: 500; }
 .scrim { position: absolute; inset: 0; z-index: 50; background: rgba(0,0,0,.4); display: flex; flex-direction: column; justify-content: flex-end; animation: gm-fade .2s ease; }
 .sheet { background: var(--surface); border-radius: 16px 16px 0 0; padding: 16px 16px calc(24px + env(safe-area-inset-bottom)); display: flex; flex-direction: column; gap: 12px; max-height: 85%; overflow: auto; animation: gm-up .22s ease; }
 @media (min-width: 480px) and (min-height: 700px) { .sheet { padding-bottom: 40px; } }

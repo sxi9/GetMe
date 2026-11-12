@@ -36,11 +36,11 @@ export function Sheet({ open, onClose, title, children }: { open: boolean; onClo
     </div>
   );
 }
-export function Toast({ text, title = 'GetMe · now', onClick, onDone }: { text: string; title?: string; onClick?: () => void; onDone: () => void }) {
+export function Toast({ text, title = 'GetMe · now', onClick, onDone, index = 0 }: { text: string; title?: string; onClick?: () => void; onDone: () => void; index?: number }) {
   const t = useRef<number | undefined>(undefined);
-  useEffect(() => { window.clearTimeout(t.current); t.current = window.setTimeout(onDone, 4000); return () => window.clearTimeout(t.current); }, [text, onDone]);
+  useEffect(() => { window.clearTimeout(t.current); t.current = window.setTimeout(onDone, 4500 + index * 800); return () => window.clearTimeout(t.current); }, [text, onDone, index]);
   return (
-    <div className="toast" role="status" onClick={() => { onClick?.(); onDone(); }}>
+    <div className="toast" role="status" style={{ position: 'relative', top: 'auto', left: 'auto', right: 'auto' }} onClick={() => { onClick?.(); onDone(); }}>
       <Icon name="notifications" size={20} color="var(--brand-primary-rest)" />
       <div className="grow"><div style={{ fontSize: 11, lineHeight: '14px', fontWeight: 600, color: 'var(--text-secondary)' }}>{title}</div><div style={{ fontSize: 13, lineHeight: '18px' }}>{text}</div></div>
     </div>

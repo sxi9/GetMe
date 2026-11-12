@@ -4,11 +4,14 @@ import { Toast } from '../ui';
 
 /** The device shell: full-screen on phones, a framed phone on desktop. Renders the toast stack. */
 export function Phone({ children, theme }: { children: ReactNode; theme?: string }) {
-  const { toasts, dismissToast, onToastClick } = useStore();
+  const { toasts, dismissToast, onToastClick, online, queue } = useStore();
   return (
     <div className="phone-wrap">
       <div className="phone" data-gm-theme={theme}>
-        {toasts.slice(-1).map(t => <Toast key={t.id} text={t.text} title={t.title} onDone={() => dismissToast(t.id)} onClick={() => onToastClick.current?.(t.orderId)} />)}
+        <div className="toast-stack">
+          {toasts.slice(-3).map((t, i) => <Toast key={t.id} text={t.text} title={t.title} index={i} onDone={() => dismissToast(t.id)} onClick={() => onToastClick.current?.(t.orderId)} />)}
+        </div>
+        {(!online || queue.length > 0) && <div className="offline-bar" role="status"><span className="vulpes-icon" style={{ fontSize: 16 }}>{online ? 'sync' : 'cloud_off'}</span>{online ? `Sending ${queue.length} saved action${queue.length === 1 ? '' : 's'}…` : queue.length ? `Offline · ${queue.length} action${queue.length === 1 ? '' : 's'} will send when you are back online` : 'Offline · showing the last known state'}</div>}
         {children}
       </div>
     </div>

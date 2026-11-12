@@ -7,3 +7,4 @@ export * from './Input';
 export * from './Controls';
 export * from './Shell';
 export * from './Map';
+export * from './MapPicker';

@@ -3,6 +3,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { OrderEvent, Partner, Role, Shop, User } from '@getme/core';
 import { api, getToken, setToken, wsUrl } from './api';
+import { syncPush } from './push';
+import { flush, onQueue, type Queued } from './offline';
 
 export interface Me { user: User; partner: Partner | null; shop: Shop | null; wallet?: number; addresses?: any[]; favourites?: string[] }
 export interface Session { token: string; me: Me }
@@ -18,6 +20,8 @@ interface Store {
   dismissToast: (id: number) => void;
   subscribe: (h: Handler) => () => void;
   connected: boolean;
+  online: boolean;
+  queue: Queued[];
   onToastClick: React.MutableRefObject<((orderId: string | null) => void) | null>;
 }
 const Ctx = createContext<Store | null>(null);
@@ -27,6 +31,9 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
   const [session, setSession] = useState<Session | null>(() => { try { const raw = localStorage.getItem(KEY(role)); return raw ? JSON.parse(raw) : null; } catch { return null; } });
   const [toasts, setToasts] = useState<Store['toasts']>([]);
   const [connected, setConnected] = useState(false);
+  const [online, setOnline] = useState(() => typeof navigator === 'undefined' || navigator.onLine !== false);
+  const [queue, setQueue] = useState<Queued[]>([]);
+  useEffect(() => { const on = () => { setOnline(true); void flush(); }, off = () => setOnline(false); window.addEventListener('online', on); window.addEventListener('offline', off); const un = onQueue(setQueue); return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off); un(); }; }, []);
   const handlers = useRef(new Set<Handler>());
   const onToastClick = useRef<((orderId: string | null) => void) | null>(null);
   const seq = useRef(0);
@@ -37,9 +44,11 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
   const signOut = useCallback(() => { api('/api/auth/logout', { method: 'POST', body: {} }).catch(() => {}); persist(null); }, [persist]);
   const refreshMe = useCallback(async () => { if (!getToken()) return; try { const me = await api<Me>('/api/me'); setSession(s => s ? { ...s, me } : s); } catch (e: any) { if (e.status === 401) persist(null); } }, [persist]);
   const setMe = useCallback((p: Partial<Me>) => setSession(s => s ? { ...s, me: { ...s.me, ...p } } : s), []);
-  const toast = useCallback((text: string, title = 'GetMe · now', orderId: string | null = null) => { const id = ++seq.current; setToasts(t => [...t.slice(-2), { id, text, title, orderId }]); }, []);
+  const toast = useCallback((text: string, title = 'GetMe · now', orderId: string | null = null) => { const id = ++seq.current; setToasts(t => [...t.slice(-2), { id, text, title, orderId }]); try { if (document.visibilityState === 'visible' && navigator.vibrate) navigator.vibrate(40); } catch { /* ignore */ } }, []);
   const dismissToast = useCallback((id: number) => setToasts(t => t.filter(x => x.id !== id)), []);
   const subscribe = useCallback((h: Handler) => { handlers.current.add(h); return () => { handlers.current.delete(h); }; }, []);
+
+  useEffect(() => { if (session) void syncPush(); }, [session?.token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // websocket lifecycle
   useEffect(() => {
@@ -47,7 +56,7 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
     let ws: WebSocket | null = null, closed = false, retry = 1000, timer: number | undefined;
     const connect = () => {
       ws = new WebSocket(wsUrl('token=' + encodeURIComponent(session.token)));
-      ws.onopen = () => { setConnected(true); retry = 1000; refreshMe(); };
+      ws.onopen = () => { setConnected(true); retry = 1000; refreshMe(); void flush(); };
       ws.onmessage = (m) => {
         let ev: OrderEvent; try { ev = JSON.parse(m.data); } catch { return; }
         if (ev.type === 'notify') toast(ev.body ? `${ev.title} · ${ev.body}` : ev.title, 'GetMe · now', ev.orderId);
@@ -64,7 +73,7 @@ export function StoreProvider({ role, children }: { role: Role; children: ReactN
     return () => { closed = true; window.clearTimeout(timer); window.clearInterval(ping); ws?.close(); };
   }, [session?.token]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const value = useMemo<Store>(() => ({ session, signIn, signOut, refreshMe, setMe, toast, toasts, dismissToast, subscribe, connected, onToastClick }), [session, signIn, signOut, refreshMe, setMe, toast, toasts, dismissToast, subscribe, connected]);
+  const value = useMemo<Store>(() => ({ session, signIn, signOut, refreshMe, setMe, toast, toasts, dismissToast, subscribe, connected, online, queue, onToastClick }), [session, signIn, signOut, refreshMe, setMe, toast, toasts, dismissToast, subscribe, connected, online, queue]);
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 export function useStore() { const s = useContext(Ctx); if (!s) throw new Error('StoreProvider missing'); return s; }

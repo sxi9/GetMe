@@ -10,8 +10,9 @@ const BRAND: Record<Role, { name: string; tagline: string; icon: string }> = {
   customer: { name: 'GetMe', tagline: 'Anything from nearby, brought to your door.', icon: 'near_me' },
   partner: { name: 'GetMe Partner', tagline: 'Earn on your own schedule, one trip at a time.', icon: 'two_wheeler' },
   shop: { name: 'GetMe Shops', tagline: 'Your catalogue, your orders, more customers nearby.', icon: 'storefront' },
+  admin: { name: 'GetMe Ops', tagline: 'Verification, shops, refunds and regions.', icon: 'admin_panel_settings' },
 };
-const DEMO: Record<Role, string> = { customer: '9845012345', partner: '9986044112', shop: '9886071234' };
+const DEMO: Record<Role, string> = { customer: '9845012345', partner: '9986044112', shop: '9886071234', admin: '9000000000' };
 
 export function SignIn({ role }: { role: Role }) {
   const { signIn, toast } = useStore();
