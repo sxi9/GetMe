@@ -52,7 +52,7 @@ export function seed(db: Db) {
   for (const p of PARTNERS) {
     const u = user('u_' + p.id, 'partner', p.name, p.phone);
     db.putUser(u);
-    const partner: Partner = { id: p.id, userId: u.id, name: p.name, initials: initials(p.name), photoUrl: null, tier: 'pro', documents: [{ kind: 'licence', url: '/uploads/sample-receipt.svg', at: t }], verification: 'verified', verificationNote: null, communityId: null, activeRunId: null, vehicle: p.vehicle, plate: p.plate, rating: p.rating, trips: p.trips, online: p.id !== 'ravi', pos: p.pos, posAt: t, area: 'HSR Layout', verified: true, activeOrderId: null, floatLimit: DEFAULT_FLOAT_LIMIT };
+    const partner: Partner = { id: p.id, userId: u.id, name: p.name, initials: initials(p.name), photoUrl: null, tier: 'pro', documents: [{ kind: 'licence', url: '/uploads/sample-receipt.svg', at: t }], verification: 'verified', verificationNote: null, communityId: null, activeRunId: null, heading: null, speedKmh: null, trail: [], vehicle: p.vehicle, plate: p.plate, rating: p.rating, trips: p.trips, online: p.id !== 'ravi', pos: p.pos, posAt: t, area: 'HSR Layout', verified: true, activeOrderId: null, floatLimit: DEFAULT_FLOAT_LIMIT };
     db.putPartner(partner);
     db.putLedger({ id: uid('l_'), userId: u.id, orderId: null, kind: 'payout', amount: 0, note: 'Account opened', at: t });
   }
@@ -68,7 +68,7 @@ export function seed(db: Db) {
   // a community runner (neighbour) and an open run to town
   const runnerU = user('u_lakshmi', 'partner', 'Lakshmi Devi', '9986044116');
   db.putUser({ ...runnerU, communityId: soc.id });
-  db.putPartner({ id: 'lakshmi', userId: runnerU.id, name: 'Lakshmi Devi', initials: 'LD', photoUrl: null, tier: 'runner', documents: [{ kind: 'id', url: '/uploads/sample-receipt.svg', at: t }, { kind: 'selfie', url: '/uploads/sample-pickup.svg', at: t }], verification: 'verified', verificationNote: null, communityId: soc.id, activeRunId: null, vehicle: 'Scooter', plate: 'KA 05 AB 9921', rating: 4.7, trips: 38, online: true, pos: { lat: 12.9138, lng: 77.6418 }, posAt: t, area: 'HSR Layout', verified: true, activeOrderId: null, floatLimit: 1000 });
+  db.putPartner({ id: 'lakshmi', userId: runnerU.id, name: 'Lakshmi Devi', initials: 'LD', photoUrl: null, tier: 'runner', documents: [{ kind: 'id', url: '/uploads/sample-receipt.svg', at: t }, { kind: 'selfie', url: '/uploads/sample-pickup.svg', at: t }], verification: 'verified', verificationNote: null, communityId: soc.id, activeRunId: null, heading: null, speedKmh: null, trail: [], vehicle: 'Scooter', plate: 'KA 05 AB 9921', rating: 4.7, trips: 38, online: true, pos: { lat: 12.9138, lng: 77.6418 }, posAt: t, area: 'HSR Layout', verified: true, activeOrderId: null, floatLimit: 1000 });
   const depart = new Date(Date.now() + 2 * 3600_000), cutoff = new Date(Date.now() + 90 * 60_000);
   const run: Run = { id: 'run_seed', partnerId: 'lakshmi', partnerName: 'Lakshmi Devi', label: 'Madiwala market run', destination: 'Madiwala market', destinationPos: { lat: 12.9226, lng: 77.6174 }, from: { label: 'Sunrise Residency', line: '24th Main, HSR Layout Sector 2', lat: 12.9135, lng: 77.6420 }, departAt: depart.toISOString(), cutoffAt: cutoff.toISOString(), capacity: 6, feePerOrder: 30, communityId: soc.id, status: 'open', orderIds: [], note: 'Going for vegetables and groceries. Add your list, I will pick it up on the way back.', createdAt: t, updatedAt: t };
   db.putRun(run);
@@ -76,7 +76,7 @@ export function seed(db: Db) {
   // a pending partner for the admin to verify
   const newU = user('u_suresh', 'partner', 'Suresh N', '9986044117');
   db.putUser(newU);
-  db.putPartner({ id: 'suresh', userId: newU.id, name: 'Suresh N', initials: 'SN', photoUrl: null, tier: 'pro', documents: [{ kind: 'licence', url: '/uploads/sample-receipt.svg', at: t }, { kind: 'rc', url: '/uploads/sample-receipt.svg', at: t }], verification: 'pending', verificationNote: null, communityId: null, activeRunId: null, vehicle: 'Bike', plate: 'KA 01 ZZ 1001', rating: 5, trips: 0, online: false, pos: null, posAt: null, area: 'HSR Layout', verified: false, activeOrderId: null, floatLimit: 2000 });
+  db.putPartner({ id: 'suresh', userId: newU.id, name: 'Suresh N', initials: 'SN', photoUrl: null, tier: 'pro', documents: [{ kind: 'licence', url: '/uploads/sample-receipt.svg', at: t }, { kind: 'rc', url: '/uploads/sample-receipt.svg', at: t }], verification: 'pending', verificationNote: null, communityId: null, activeRunId: null, heading: null, speedKmh: null, trail: [], vehicle: 'Bike', plate: 'KA 01 ZZ 1001', rating: 5, trips: 0, online: false, pos: null, posAt: null, area: 'HSR Layout', verified: false, activeOrderId: null, floatLimit: 2000 });
 
   db.setMeta('order_no', '2040');
   db.setMeta('seeded', t);

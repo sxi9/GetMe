@@ -137,3 +137,20 @@ textarea.ta:focus { border-color: var(--focus-ring); box-shadow: 0 0 0 1px var(-
 @keyframes gm-fade { from { opacity: 0 } to { opacity: 1 } }
 @keyframes gm-pulse { 0% { transform: scale(.7); opacity: .6 } 100% { transform: scale(1.9); opacity: 0 } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; } }
+
+/* live vehicle marker: rotating heading arrow, pulsing ring, vehicle glyph, smooth moves */
+.leaflet-marker-icon.vehicle-marker { transition: transform .9s linear; will-change: transform; }
+.vehicle { position: relative; width: 44px; height: 44px; }
+.vehicle .ring { position: absolute; inset: 4px; border-radius: 50%; background: var(--brand-primary-rest); opacity: .22; animation: gm-ring 1.8s ease-out infinite; }
+.vehicle .arrow { position: absolute; inset: 0; transition: transform .9s ease; }
+.vehicle .arrow .tip { position: absolute; left: 50%; top: -2px; transform: translateX(-50%); font-size: 16px; color: var(--brand-primary-rest); filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
+.vehicle .body { position: absolute; left: 50%; top: 50%; width: 28px; height: 28px; margin: -14px 0 0 -14px; border-radius: 50%; background: var(--gm-chrome); border: 2.5px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.35); display: flex; align-items: center; justify-content: center; color: var(--gm-accent); }
+.vehicle .body .vulpes-icon { font-size: 16px; }
+.vehicle .lbl { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 2px); white-space: nowrap; background: var(--surface); border: 1px solid var(--surface-border); border-radius: 999px; padding: 1px 7px; font: 600 10px/14px var(--font-sans); color: var(--text); box-shadow: var(--shadow-card); }
+.leaflet-overlay-pane .trail { filter: blur(.5px); }
+.map .eta.traffic-light { border-color: #0F9135; color: #0F9135; }
+.map .eta.traffic-moderate { border-color: #F27700; color: #F27700; }
+.map .eta.traffic-heavy { border-color: #A51E23; color: #A51E23; }
+.map .eta { display: inline-flex; align-items: center; gap: 4px; }
+.map .eta .tl { font-weight: 400; color: var(--text-secondary); margin-left: 2px; }
+@keyframes gm-ring { 0% { transform: scale(.6); opacity: .45 } 100% { transform: scale(1.6); opacity: 0 } }

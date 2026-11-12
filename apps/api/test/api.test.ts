@@ -227,3 +227,29 @@ test('phase 2: communities, notice board, admin verification, shop approval, ref
   const t = await j('/api/push/test', { body: {}, token: c.token }); assert.equal(t.delivered, 0, 'fake endpoint is pruned, no crash');
   const regions = await j('/api/admin/regions', { method: 'PUT', body: [{ id: 'hill', surcharge: 1.5 }], token: a.token }); assert.equal(regions.find((r: any) => r.id === 'hill').surcharge, 1.5);
 });
+
+test('crypto: invoice appears when the bill is final, handover waits for payment, simulate pays', async () => {
+  const c = await login('9845012345', 'customer'), p = await login('9986044112', 'partner');
+  const addrs = await j('/api/addresses', { token: c.token });
+  const inPerson = addrs.find((a: any) => a.handoff !== 'leave_at_door') ?? addrs[0];
+  const rates = await j('/api/crypto/rates', { token: c.token }); assert.ok(rates.rates.USDT > 50);
+  const o = await j('/api/orders', { body: { kind: 'list', items: [{ name: 'Ghee 1 kg', qty: 1 }], mode: 'broadcast', pay: 'crypto', addressId: inPerson.id }, token: c.token });
+  assert.equal(o.pay, 'crypto'); assert.equal(o.crypto, null, 'no invoice until the bill is final');
+  await ev(o.id, { type: 'accept' }, p.token); await ev(o.id, { type: 'reached' }, p.token);
+  await assert.rejects(j(`/api/orders/${o.id}/crypto`, { body: {}, token: c.token }), /final bill/);
+  await ev(o.id, { type: 'bought', itemCost: 600, receiptUrl: null }, p.token);
+  await new Promise(r => setTimeout(r, 300));
+  let v = await j(`/api/orders/${o.id}/crypto`, { token: c.token });
+  assert.equal(v.crypto.status, 'pending'); assert.equal(v.crypto.amountInr, 600 + 45 + 5); assert.ok(v.crypto.amountCrypto > 0); assert.ok(v.crypto.address.length > 10);
+  assert.equal(Math.ceil((v.crypto.amountInr / v.crypto.rateInr) * 100) / 100, v.crypto.amountCrypto);
+  const usdc = await j(`/api/orders/${o.id}/crypto`, { body: { currency: 'USDC' }, token: c.token }); assert.equal(usdc.crypto.currency, 'USDC'); assert.equal(usdc.crypto.network, 'Polygon');
+  await ev(o.id, { type: 'arrived' }, p.token);
+  const cust = await j(`/api/orders/${o.id}`, { token: c.token });
+  await assert.rejects(ev(o.id, { type: 'complete', otp: cust.otp, cashCollected: false, podPhotoUrl: '/uploads/sample-pickup.svg' }, p.token), /crypto payment/);
+  const paid = await j(`/api/orders/${o.id}/crypto/simulate`, { body: {}, token: c.token }); assert.equal(paid.crypto.status, 'paid'); assert.ok(paid.crypto.txHash);
+  const partnerView = await j(`/api/orders/${o.id}`, { token: p.token }); assert.equal(partnerView.crypto.status, 'paid');
+  v = await ev(o.id, { type: 'complete', otp: cust.otp, cashCollected: false, podPhotoUrl: '/uploads/sample-pickup.svg' }, p.token); assert.equal(v.status, 'delivered');
+  const e = await j('/api/partner/earnings', { token: p.token }); assert.ok(e.ledger.some((l: any) => l.kind === 'reimburse' && l.amount === 600), 'partner reimbursed in rupees');
+  // traffic-aware ETA fields are present on views
+  assert.ok('traffic' in v && 'courierHeading' in v && Array.isArray(v.courierTrail));
+});

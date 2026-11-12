@@ -10,6 +10,7 @@ import { Bus } from './bus.js';
 import { Service } from './service.js';
 import { Sim } from './sim.js';
 import { Push, Sms } from './push.js';
+import { Crypto } from './crypto.js';
 import { reverse as geoReverse, search as geoSearch } from './geo.js';
 import { seed } from './seed.js';
 import { now, otp4, token, uid } from './ids.js';
@@ -32,6 +33,7 @@ const bus = new Bus();
 const svc = new Service(db, bus);
 svc.push = new Push(db);
 svc.sms = new Sms(db);
+svc.crypto = new Crypto(db);
 const sim = SIM_BOTS ? new Sim(svc, SIM_SPEED) : null;
 
 // Sim hooks: wrap commit/create so bots react to real events.
@@ -86,7 +88,7 @@ function newUser(role: Role, name: string, phone: string, email: string | null):
   const u: User = { id: uid('u_'), role, name, phone, email, lang: 'en', pushEnabled: true, referralCode: (name.split(' ')[0] || 'GETME').toUpperCase() + '50', createdAt: now() };
   db.putUser(u);
   if (role === 'customer') db.putLedger({ id: uid('l_'), userId: u.id, orderId: null, kind: 'topup', amount: 0, note: 'Wallet opened', at: now() });
-  if (role === 'partner') db.putPartner({ id: uid('p_'), userId: u.id, name: u.name, initials: u.name.split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase() || 'P', photoUrl: null, tier: 'runner', documents: [], verification: 'none', verificationNote: null, communityId: null, activeRunId: null, vehicle: 'Bike', plate: '', rating: 5, trips: 0, online: false, pos: null, posAt: null, area: 'Nearby', verified: false, activeOrderId: null, floatLimit: 1000 });
+  if (role === 'partner') db.putPartner({ id: uid('p_'), userId: u.id, name: u.name, initials: u.name.split(' ').map(s => s[0]).join('').slice(0, 2).toUpperCase() || 'P', photoUrl: null, tier: 'runner', documents: [], verification: 'none', verificationNote: null, communityId: null, activeRunId: null, heading: null, speedKmh: null, trail: [], vehicle: 'Bike', plate: '', rating: 5, trips: 0, online: false, pos: null, posAt: null, area: 'Nearby', verified: false, activeOrderId: null, floatLimit: 1000 });
   if (role === 'shop') db.putShop({ id: uid('s_'), ownerId: u.id, name: `${u.name}'s shop`, photoUrl: null, approved: false, cat: 'Grocery', address: '', hours: '9 am – 9 pm', pos: { lat: 12.9121, lng: 77.6446 }, open: false, gstin: null, items: [], rating: 0, createdAt: now() });
   return u;
 }
@@ -251,6 +253,34 @@ app.post<{ Body: { text: string } }>('/api/community/announce', async (req) => s
 app.get<{ Querystring: { lat: string; lng: string } }>('/api/geo/reverse', async (req) => { ctxOf(req); const lat = Number(req.query.lat), lng = Number(req.query.lng); if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new DomainError('invalid', 'lat/lng required'); const hit = await geoReverse(db, { lat, lng }); return { ...hit, region: svc.regionAt({ lat, lng }) }; });
 app.get<{ Querystring: { q: string; lat?: string; lng?: string } }>('/api/geo/search', async (req) => { ctxOf(req); const q = req.query; return geoSearch(db, q.q ?? '', q.lat && q.lng ? { lat: Number(q.lat), lng: Number(q.lng) } : undefined); });
 app.get<{ Querystring: { lat: string; lng: string } }>('/api/geo/region', async (req) => { ctxOf(req); return svc.regionAt({ lat: Number(req.query.lat), lng: Number(req.query.lng) }); });
+
+// ---------- crypto payments
+app.get('/api/crypto/rates', async (req) => { ctxOf(req); return { rates: await svc.crypto!.rates(), provider: svc.crypto!.provider, currencies: ['USDT', 'USDC'] }; });
+app.get<{ Params: { id: string } }>('/api/orders/:id/crypto', async (req) => { const c = requireRole(req, 'customer'); const o = await svc.cryptoStatus(c, req.params.id); return svc.view(o, 'customer'); });
+app.post<{ Params: { id: string }; Body: { currency?: 'USDT' | 'USDC' } }>('/api/orders/:id/crypto', async (req) => {
+  const c = requireRole(req, 'customer'); const o = db.getOrder(req.params.id); if (!o || o.customerId !== c.user.id) throw new DomainError('not_found', 'Order not found');
+  if (o.pay !== 'crypto') throw new DomainError('wrong_pay', 'This order is not paid in crypto');
+  if (!(o.status === 'to_customer' || o.status === 'arrived' || o.status === 'delivered')) throw new DomainError('bad_state', 'The invoice is created once the final bill is known');
+  const cur = (req.body as any)?.currency === 'USDC' ? 'USDC' : 'USDT';
+  // switching currency (or an expired invoice) gets a fresh one; a paid invoice is never replaced
+  if (o.crypto && o.crypto.status !== 'paid' && o.crypto.status !== 'confirming' && o.crypto.currency !== cur) { db.putOrder({ ...o, crypto: null }); }
+  const next = await svc.ensureCryptoInvoice(o.id, cur);
+  return svc.view(next!, 'customer');
+});
+app.post<{ Params: { id: string } }>('/api/orders/:id/crypto/simulate', async (req) => {
+  // Development only: marks the simulated invoice as paid. Disabled for real providers.
+  const c = requireRole(req, 'customer'); const o = db.getOrder(req.params.id); if (!o || o.customerId !== c.user.id || !o.crypto) throw new DomainError('not_found', 'No invoice');
+  if (svc.crypto!.provider !== 'sim') throw new DomainError('forbidden', 'Simulated payments are off with a real provider');
+  const next = svc.cryptoProviderUpdate(o.crypto.invoiceId, 'finished', '0xsim' + o.crypto.invoiceId.slice(4));
+  return svc.view(next!, 'customer');
+});
+app.post('/api/crypto/webhook', { config: { rawBody: true } }, async (req, reply) => {
+  const raw = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+  if (!svc.crypto!.verifyWebhook(raw, req.headers['x-nowpayments-sig'] as string | undefined)) return reply.status(401).send({ error: 'bad_signature' });
+  const b: any = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+  svc.cryptoProviderUpdate(String(b.payment_id), String(b.payment_status), b.payin_hash ?? null);
+  return { ok: true };
+});
 
 // ---------- web push
 app.get('/api/push/vapid', async () => ({ publicKey: svc.push?.publicKey ?? null }));

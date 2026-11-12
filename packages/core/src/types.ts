@@ -345,7 +345,7 @@ export type OrderEvent =
   | { type: 'counter.answered'; orderId: string; approved: boolean }
   | { type: 'order.assigned'; orderId: string; partnerId: string }
   | { type: 'status.changed'; orderId: string; status: OrderStatus }
-  | { type: 'location.updated'; orderId: string | null; partnerId: string; pos: LatLng }
+  | { type: 'location.updated'; orderId: string | null; partnerId: string; pos: LatLng; heading?: number | null; speedKmh?: number | null; trail?: LatLng[] }
   | { type: 'message.sent'; message: Message }
   | { type: 'order.cancelled'; orderId: string; by: Role | 'system' }
   | { type: 'order.completed'; orderId: string }

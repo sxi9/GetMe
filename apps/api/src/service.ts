@@ -3,12 +3,13 @@
 // with role-specific redaction.
 import {
   ACTIVE, DISPATCH, DomainError, REGIONS, apply, bill, choosablePartners, deliveryFeeForKm, dispatchTick, eligiblePartners, etaMinutes, haversineKm,
-  isDue, itemsTotal, joinableRuns, listDeliveryFee, makeFee, parcelDeliveryFee, promoFor, regionFor, settle, validateParcel, type Address, type Announcement, type Community, type LatLng, type Message, type Notification,
-  type Order, type OrderEventInput, type OrderItem, type OrderKind, type Partner, type RegionProfile, type Role, type Run, type Shop, type Subscription, type User,
+  bearing, etaWithTraffic, isDue, itemsTotal, joinableRuns, listDeliveryFee, makeFee, parcelDeliveryFee, promoFor, regionFor, settle, validateParcel, type Address, type Announcement, type Community, type LatLng, type Message, type Notification,
+  type CryptoPayment, type Order, type OrderEventInput, type OrderItem, type OrderKind, type Partner, type RegionProfile, type Role, type Run, type Shop, type Subscription, type User,
 } from '@getme/core';
 import type { Db } from './db.js';
 import type { Bus } from './bus.js';
 import type { Push, Sms } from './push.js';
+import type { Crypto } from './crypto.js';
 import { now, otp4, token, uid } from './ids.js';
 
 export interface Ctx { user: User; partner: Partner | null; shop: Shop | null }
@@ -22,7 +23,7 @@ export interface CreateOrderInput {
   pickupAddressId?: string;         // parcels
   mode: 'broadcast' | 'offers' | 'choose' | 'run';
   runId?: string | null;
-  pay: 'cod' | 'upi' | 'card' | 'wallet';
+  pay: 'cod' | 'upi' | 'card' | 'wallet' | 'crypto';
   idempotencyKey?: string;
   promoCode?: string | null;
   when?: 'now' | 'schedule'; slot?: string | null; scheduledAt?: string | null;
@@ -33,6 +34,7 @@ export interface CreateOrderInput {
 export class Service {
   push: Push | null = null;
   sms: Sms | null = null;
+  crypto: Crypto | null = null;
   constructor(public db: Db, public bus: Bus) {}
 
   /** Region profiles with admin overrides applied. */
@@ -72,9 +74,11 @@ export class Service {
     const courier = o.courierId ? this.db.getPartner(o.courierId) : null;
     const target: LatLng | null = o.status === 'to_shop' ? (o.shopPos ?? null) : o.status === 'to_customer' ? o.address : null;
     const courierPos = courier?.pos ?? null;
-    const etaMin = target && courierPos ? etaMinutes(haversineKm(courierPos, target)) : null;
+    const regionKind = this.regions().find(r => r.id === o.regionId)?.kind ?? 'city';
+    const eta = target && courierPos ? etaWithTraffic(haversineKm(courierPos, target), { kind: regionKind, observedKmh: courier?.speedKmh }) : null;
+    const etaMin = eta?.min ?? null;
     const run = o.runId ? this.db.getRun(o.runId) : null;
-    const base = { ...o, bill: bill(o), shopStatus, courierPos, etaMin, run: run ? { id: run.id, label: run.label, destination: run.destination, departAt: run.departAt, status: run.status } : null, courier: courier ? { id: courier.id, name: courier.name, initials: courier.initials, vehicle: courier.vehicle, plate: courier.plate, rating: courier.rating, trips: courier.trips } : null };
+    const base = { ...o, bill: bill(o), shopStatus, courierPos, etaMin, traffic: eta?.level ?? null, courierHeading: courier?.heading ?? null, courierSpeedKmh: courier?.speedKmh ?? null, courierTrail: courier?.trail ?? [], courierVehicle: courier?.vehicle ?? null, run: run ? { id: run.id, label: run.label, destination: run.destination, departAt: run.departAt, status: run.status } : null, courier: courier ? { id: courier.id, name: courier.name, initials: courier.initials, vehicle: courier.vehicle, plate: courier.plate, rating: courier.rating, trips: courier.trips } : null };
     if (role === 'customer') return base;
     const { otp, ...noOtp } = base;
     const customerName = o.anon ? 'Customer' : o.customerName;
@@ -86,10 +90,10 @@ export class Service {
       return { ...noOtp, customerName, distKm: km, etaMin: km != null ? etaMinutes(km) : null, legKm, myOffer: o.offers.find(x => x.partnerId === me?.id) ?? null, myCounter: o.counter?.partnerId === me?.id ? o.counter : null, declinedByMe: !!me && o.declinedIds.includes(me.id), earn: o.fee.delivery + o.fee.extra + o.tip };
     }
     if (role === 'shop') {
-      return { id: o.id, kind: o.kind, customerName, items: o.items, itemsTotal: o.itemsTotal, status: o.status, shopStatus, courierName: o.courierName, createdAt: o.createdAt, times: o.times, note: o.note, subs: o.subs };
+      return { id: o.id, kind: o.kind, customerName, items: o.items, itemsTotal: o.itemsTotal, status: o.status, shopStatus, courierName: o.courierName, createdAt: o.createdAt, times: o.times, note: o.note, subs: o.subs, run: base.run, handoff: o.address.handoff ?? 'in_person', pay: o.pay };
     }
     // public tracking link
-    return { id: o.id, kind: o.kind, status: o.status, shopName: o.shopName, shopPos: o.shopPos, address: { line: o.address.line, lat: o.address.lat, lng: o.address.lng }, courier: base.courier, courierPos, etaMin, times: o.times, receiver: o.receiver ? { name: o.receiver.name } : null };
+    return { id: o.id, kind: o.kind, status: o.status, shopName: o.shopName, shopPos: o.shopPos, address: { line: o.address.line, lat: o.address.lat, lng: o.address.lng }, courier: base.courier, courierPos, etaMin, traffic: base.traffic, courierHeading: base.courierHeading, courierTrail: base.courierTrail, courierVehicle: base.courierVehicle, podPhotoUrl: o.podPhotoUrl, times: o.times, receiver: o.receiver ? { name: o.receiver.name } : null };
   }
 
   /** Push the latest state of an order to everyone who should see it. */
@@ -199,7 +203,7 @@ export class Service {
       budget: input.budget ?? null, subs: input.subs ?? true, repeat: !!input.repeat, note: input.note ?? '', receiver: input.receiver ?? null,
       pkType: input.pkType ?? null, pkSize: input.pkSize ?? null,
       status: 'requesting', courierId: null, courierName: null, chosenId: null, offers: [], counter: null, declinedIds: [], seenIds: [],
-      fee: q.fee, itemCost: null, receiptUrl: null, pickupPhotoUrl: null, otp: otp4(), cashCollected: false, podPhotoUrl: null, idempotencyKeys: [], tip: 0, rating: null, customerRating: null,
+      fee: q.fee, itemCost: null, receiptUrl: null, pickupPhotoUrl: null, otp: otp4(), cashCollected: false, podPhotoUrl: null, crypto: null, idempotencyKeys: [], tip: 0, rating: null, customerRating: null,
       issue: null, refund: null, cancelReason: null, cancelledBy: null, times: { requesting: t }, searchRadiusKm: region.radiusKm[0], createdAt: t, updatedAt: t,
     };
     this.db.putOrder(o);
@@ -291,6 +295,7 @@ export class Service {
       if (m) this.notify(next.customerId, m[0], m[1], next.id, { important: next.status === 'arrived' || next.status === 'delivered' || next.status === 'expired' });
       if (next.runId && (next.status === 'delivered' || next.status === 'cancelled')) this.maybeFinishRun(next.runId);
       if (next.status === 'to_customer') this.pushMessage(next, 'partner', 'text', parcel ? 'Picked up the package. On my way to the receiver.' : 'Got everything on the list. On my way.');
+      if (next.pay === 'crypto' && (next.status === 'to_customer' || next.status === 'arrived')) void this.ensureCryptoInvoice(next.id);
       if (next.kind === 'shop' && next.shopId) {
         const map: Partial<Record<string, string>> = { to_customer: 'handed', delivered: 'done', cancelled: 'cancelled', expired: 'cancelled' };
         if (map[next.status]) { this.db.putShopStatus(next.id, next.shopId, map[next.status]!); }
@@ -391,11 +396,19 @@ export class Service {
     return next;
   }
   setLocation(ctx: Ctx, pos: LatLng) {
-    const p = ctx.partner!; const next = { ...p, pos, posAt: now() };
+    const p = ctx.partner!; const t = now();
+    let heading = p.heading, speedKmh = p.speedKmh;
+    if (p.pos && p.posAt) {
+      const km = haversineKm(p.pos, pos), hrs = Math.max(1, Date.parse(t) - Date.parse(p.posAt)) / 3.6e6;
+      if (km > 0.008) { heading = bearing(p.pos, pos); speedKmh = Math.round(Math.min(80, km / hrs)); }
+      else if (hrs > 60 / 3.6e6 * 1000) speedKmh = 0; // stationary for a while
+    }
+    const trail = [...(p.trail ?? []), pos].slice(-12);
+    const next = { ...p, pos, posAt: t, heading, speedKmh, trail };
     this.db.putPartner(next);
     if (p.activeOrderId) {
       const o = this.db.getOrder(p.activeOrderId);
-      if (o) { this.bus.send(o.customerId, { type: 'location.updated', orderId: o.id, partnerId: p.id, pos }); const tok = this.db.getMeta('share:' + o.id); if (tok) this.bus.send('track:' + tok, { type: 'location.updated', orderId: o.id, partnerId: p.id, pos }); }
+      if (o) { const ev = { type: 'location.updated' as const, orderId: o.id, partnerId: p.id, pos, heading, speedKmh, trail }; this.bus.send(o.customerId, ev); const tok = this.db.getMeta('share:' + o.id); if (tok) this.bus.send('track:' + tok, ev); }
     }
     return next;
   }
@@ -493,6 +506,44 @@ export class Service {
     const listsBought = this.db.ordersByStatus(['delivered']).filter(o => o.kind === 'list').length;
     const totalDone = listsBought + done.length;
     return { orders: todayDone.length, revenue: todayDone.reduce((a, o) => a + (o.itemsTotal ?? 0), 0), avgPrep, week, labels, top, split: totalDone ? Math.round((listsBought / totalDone) * 100) : 62, settlement: this.db.balance(shop.ownerId), lowStock: shop.items.filter(i => i.stock <= 3).length };
+  }
+
+  // ---------- crypto invoices
+  /** Create (or renew) the stablecoin invoice for the order's final bill. Safe to call repeatedly. */
+  async ensureCryptoInvoice(orderId: string, currency: 'USDT' | 'USDC' = 'USDT'): Promise<Order | null> {
+    const o = this.db.getOrder(orderId); if (!o || o.pay !== 'crypto' || !this.crypto) return o;
+    if (o.crypto && o.crypto.purpose === 'order' && (o.crypto.status === 'paid' || o.crypto.status === 'confirming')) return o;
+    if (o.crypto && o.crypto.status === 'pending' && Date.parse(o.crypto.expiresAt) > Date.now() && o.crypto.amountInr === bill(o).total && o.crypto.currency === currency) return o;
+    const inv = await this.crypto.createInvoice(o.id, 'order', bill(o).total, currency);
+    const next = { ...o, crypto: inv, updatedAt: now() };
+    this.db.putOrder(next);
+    this.notify(o.customerId, `Pay ${inv.amountCrypto} ${inv.currency} to complete your order`, `₹${inv.amountInr} · the partner hands over once the payment confirms`, o.id, { important: true });
+    this.broadcastOrder(next);
+    return next;
+  }
+  async cryptoStatus(ctx: Ctx, orderId: string): Promise<Order> {
+    const o = this.db.getOrder(orderId); if (!o || o.customerId !== ctx.user.id) throw new DomainError('not_found', 'Order not found');
+    if (!o.crypto || !this.crypto) return o;
+    const inv = await this.crypto.refreshStatus(o.crypto);
+    if (inv.status !== o.crypto.status) return this.applyCrypto(o, inv);
+    return o;
+  }
+  applyCrypto(o: Order, inv: CryptoPayment): Order {
+    const next = { ...o, crypto: inv, updatedAt: now() };
+    this.db.putOrder(next);
+    if (inv.status === 'paid' && o.crypto?.status !== 'paid') {
+      this.notify(o.customerId, 'Crypto payment confirmed', `${inv.amountCrypto} ${inv.currency} received${inv.txHash ? ' · ' + inv.txHash.slice(0, 10) + '…' : ''}`, o.id);
+      const cu = this.partnerUser(o.courierId); if (cu) this.notify(cu, 'Customer paid in crypto', 'You can complete the handover now', o.id, { important: true });
+      if (inv.purpose === 'order' && o.pay === 'crypto') this.db.putLedger({ id: uid('l_'), userId: o.customerId, orderId: o.id, kind: 'charge', amount: 0, note: `${o.id} · ${inv.amountCrypto} ${inv.currency} (₹${inv.amountInr}) · ${inv.provider}`, at: now() });
+    }
+    if (inv.status === 'expired') this.notify(o.customerId, 'Crypto invoice expired', 'Open the order to get a fresh payment address', o.id, { important: true });
+    this.broadcastOrder(next);
+    return next;
+  }
+  /** Webhook / simulate entry: find the order by invoice id and apply the provider status. */
+  cryptoProviderUpdate(invoiceId: string, status: string, txHash: string | null): Order | null {
+    const o = this.db.allOrders(1000).find(x => x.crypto?.invoiceId === invoiceId); if (!o || !o.crypto || !this.crypto) return null;
+    return this.applyCrypto(o, this.crypto.applyProviderStatus(o.crypto, status, txHash));
   }
 
   // ---------- runs (a partner's announced trip; orders ride along)

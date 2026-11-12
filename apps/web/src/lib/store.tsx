@@ -1,12 +1,12 @@
 // Session + realtime store. One WebSocket per signed-in user; events fan out
 // to subscribers via useEvent(). Toasts mirror the server's `notify` events.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import type { OrderEvent, Partner, Role, Shop, User } from '@getme/core';
+import type { Community, OrderEvent, Partner, Role, Shop, User } from '@getme/core';
 import { api, getToken, setToken, wsUrl } from './api';
 import { syncPush } from './push';
 import { flush, onQueue, type Queued } from './offline';
 
-export interface Me { user: User; partner: Partner | null; shop: Shop | null; wallet?: number; addresses?: any[]; favourites?: string[] }
+export interface Me { user: User; partner: Partner | null; shop: Shop | null; community?: Community | null; wallet?: number; addresses?: any[]; favourites?: string[]; vapidPublicKey?: string }
 export interface Session { token: string; me: Me }
 type Handler = (ev: OrderEvent) => void;
 interface Store {
