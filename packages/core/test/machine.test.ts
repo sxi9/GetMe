@@ -11,7 +11,7 @@ const base = (over: Partial<Order> = {}): Order => ({
   address: { label: 'Home', line: '12, 27th Main', lat: 12.91, lng: 77.64 }, pickup: null, mode: 'broadcast', runId: null, regionId: 'blr-city', dispatch: { radiusKm: [2, 4, 6], expandEveryMs: 60_000, expireAfterMs: 5 * 60_000 }, pay: 'upi', promoCode: null, promo: 0,
   when: 'now', slot: null, scheduledAt: null, budget: null, subs: true, repeat: false, note: '', receiver: null, pkType: null, pkSize: null,
   status: 'requesting', courierId: null, courierName: null, chosenId: null, offers: [], counter: null, declinedIds: [], seenIds: [],
-  fee: makeFee(45), itemCost: null, receiptUrl: null, pickupPhotoUrl: null, otp: '4821', cashCollected: false, podPhotoUrl: null, idempotencyKeys: [], tip: 0, rating: null, customerRating: null,
+  fee: makeFee(45), itemCost: null, receiptUrl: null, pickupPhotoUrl: null, otp: '4821', cashCollected: false, podPhotoUrl: null, crypto: null, idempotencyKeys: [], tip: 0, rating: null, customerRating: null,
   issue: null, refund: null, cancelReason: null, cancelledBy: null, times: { requesting: now }, searchRadiusKm: 2, createdAt: now, updatedAt: now, ...over,
 });
 const ok = (r: ReturnType<typeof apply>): Order => { assert.equal(r.ok, true, r.ok ? '' : r.message); return (r as any).order; };
@@ -159,4 +159,14 @@ test('joinable runs: open, before cutoff, with capacity, community-scoped, withi
   const ids = (rs: Run[], c: string | null = null) => joinableRuns(rs, pos, c, t).map(r => r.id);
   assert.deepEqual(ids([run({ id: 'a' }), run({ id: 'b', status: 'closed' }), run({ id: 'c', cutoffAt: '2026-11-12T08:00:00Z' }), run({ id: 'd', orderIds: ['1', '2', '3', '4', '5'] }), run({ id: 'e', communityId: 'soc1' }), run({ id: 'f', from: { label: 'x', line: 'x', lat: 14, lng: 77 } })]), ['a']);
   assert.deepEqual(ids([run({ id: 'e', communityId: 'soc1' })], 'soc1'), ['e']);
+});
+
+test('crypto: handover waits for the invoice to be paid; settlement is like a card charge', () => {
+  const inv = { provider: 'sim' as const, invoiceId: 'i1', purpose: 'order' as const, currency: 'USDT' as const, network: 'TRC20', amountInr: 230, amountCrypto: 2.73, rateInr: 84.5, address: 'T…', payUrl: null, status: 'pending' as const, txHash: null, createdAt: now, expiresAt: now, paidAt: null };
+  const o = base({ pay: 'crypto', status: 'arrived', courierId: 'p1', itemCost: 180, crypto: inv });
+  const r = apply(o, { type: 'complete', actor: 'partner', partnerId: 'p1', otp: '4821', cashCollected: false });
+  assert.equal(r.ok, false); assert.equal((r as any).code, 'crypto_unpaid');
+  const paid = ok(apply({ ...o, crypto: { ...inv, status: 'paid' } }, { type: 'complete', actor: 'partner', partnerId: 'p1', otp: '4821', cashCollected: false }, now));
+  assert.equal(paid.status, 'delivered');
+  const s = settle(paid); assert.equal(s.customerCharge, 230); assert.equal(s.cashCollected, 0); assert.equal(s.partnerLedgerDelta, 45 + 180);
 });

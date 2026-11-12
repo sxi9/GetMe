@@ -52,7 +52,9 @@ export const PAYS: { id: PayMethod; label: string }[] = [
   { id: 'upi', label: 'UPI' },
   { id: 'card', label: 'Card' },
   { id: 'wallet', label: 'GetMe wallet' },
+  { id: 'crypto', label: 'Crypto (USDT / USDC)' },
 ];
+export const CRYPTO = { currencies: ['USDT', 'USDC'] as const, networks: { USDT: 'TRC20', USDC: 'Polygon' } as Record<string, string>, invoiceTtlMs: 30 * 60_000, fallbackRateInr: 84.5 };
 
 export const STATUS_LABEL: Record<OrderStatus, string> = {
   scheduled: 'Riding along on a trip',

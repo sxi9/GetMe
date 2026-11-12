@@ -3,7 +3,7 @@
 export type Role = 'customer' | 'partner' | 'shop' | 'admin';
 export type OrderKind = 'list' | 'shop' | 'parcel';
 export type DispatchMode = 'broadcast' | 'offers' | 'choose' | 'run';
-export type PayMethod = 'cod' | 'upi' | 'card' | 'wallet';
+export type PayMethod = 'cod' | 'upi' | 'card' | 'wallet' | 'crypto';
 export type Vehicle = 'Bike' | 'Scooter' | 'Cycle';
 
 /** Order lifecycle. `expired` is a terminal state reached when no partner is found in time. */
@@ -140,6 +140,7 @@ export interface Order {
   otp: string;                // handover code — only ever sent to the customer (and receiver)
   cashCollected: boolean;
   podPhotoUrl: string | null; // proof of delivery (required for leave_at_door / gate handoff)
+  crypto: CryptoPayment | null; // set when pay === 'crypto' and the final bill is known
   idempotencyKeys: string[];  // client keys already applied (offline replay safety)
   tip: number;
   rating: { stars: number; tags: string[] } | null;          // customer → partner
@@ -288,6 +289,26 @@ export interface Announcement {
   text: string;
   runId: string | null;
   at: string;
+}
+
+/** A stablecoin invoice for one order (or its tip). GetMe receives the crypto; partners and shops are settled in rupees. */
+export type CryptoStatus = 'pending' | 'confirming' | 'paid' | 'expired' | 'failed';
+export interface CryptoPayment {
+  provider: 'sim' | 'nowpayments';
+  invoiceId: string;
+  purpose: 'order' | 'tip';
+  currency: 'USDT' | 'USDC';
+  network: string;          // e.g. "TRC20", "Polygon"
+  amountInr: number;
+  amountCrypto: number;     // in `currency`
+  rateInr: number;          // INR per 1 unit at invoice time
+  address: string;          // pay-to address
+  payUrl: string | null;    // hosted checkout / wallet deep link
+  status: CryptoStatus;
+  txHash: string | null;
+  createdAt: string;
+  expiresAt: string;
+  paidAt: string | null;
 }
 
 export interface PushSubscriptionRecord { userId: string; endpoint: string; keys: { p256dh: string; auth: string }; at: string }

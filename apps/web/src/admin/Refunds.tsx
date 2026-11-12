@@ -29,7 +29,7 @@ export function RefundsScreen() {
         {open.map(o => (
           <div key={o.id} className="card" style={{ gap: 10 }}>
             <div className="between"><span className="b mono">{o.id}</span><Chip label={o.issue} leftIcon="report" /></div>
-            <div className="cap13">{o.anon ? t('Anonymous') : o.customerName} · {o.courierName ?? '—'} · {o.pay.toUpperCase()} · {ago(o.times?.delivered ?? o.updatedAt)} {t('ago')}</div>
+            <div className="cap13">{o.anon ? t('Anonymous') : o.customerName} · {o.courierName ?? '—'} · {o.pay.toUpperCase()} · {(() => { const a = ago(o.times?.delivered ?? o.updatedAt); return a === 'just now' ? t('just now') : t('{a} ago', { a }); })()}</div>
             <div className="cap13">{o.items.map((i: any) => `${i.name} × ${i.qty}`).join(', ')}</div>
             <div className="between"><span className="sec">{t('Order total')}</span><span className="mono">{o.bill?.totalLabel}</span></div>
             {o.receiptUrl && <a href={o.receiptUrl} target="_blank" rel="noreferrer" className="cap">{t('Open receipt')}</a>}

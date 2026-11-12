@@ -3,7 +3,7 @@ import type { Shop } from '@getme/core';
 import { api, post } from '../lib/api';
 import { useErrorToast, useStore } from '../lib/store';
 import { useT } from '../lib/i18n';
-import { Body, Button, Chip, Empty, Icon, Section, StatusChip, Toggle } from '../ui';
+import { Body, Button, Empty, Icon, Section, StatusChip, Toggle } from '../ui';
 import { useAdmin } from './state';
 
 export function ShopsScreen() {
@@ -39,7 +39,7 @@ export function ShopsScreen() {
       </Section>
       <Section title={t('Live shops')} right={String(live.length)}>
         {!live.length ? <Empty icon="storefront" title={t('No live shops')} /> : <div className="list">{live.map(row)}</div>}
-        <div className="cap"><Chip label={t('Toggle hides a shop from customers without deleting it')} leftIcon="info" /></div>
+        <div className="cap row" style={{ gap: 6 }}><Icon name="info" size={16} />{t('The toggle hides a shop from customers without deleting it.')}</div>
       </Section>
     </Body>
   );

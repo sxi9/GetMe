@@ -193,6 +193,7 @@ export function apply(o: Order, ev: OrderEventInput, now: string = new Date().to
         return fail('pod_photo', handoff === 'gate' ? 'Take a photo of the handover at the gate' : 'Take a photo of the delivery at the door');
       }
       if (o.pay === 'cod' && !ev.cashCollected) return fail('cash', 'Confirm the cash collected first');
+      if (o.pay === 'crypto' && o.crypto?.status !== 'paid') return fail('crypto_unpaid', 'Waiting for the customer\'s crypto payment to confirm');
       return ok({ ...stamp(o, 'delivered', now), cashCollected: o.pay === 'cod', podPhotoUrl: ev.podPhotoUrl ?? null });
     }
     case 'rate_customer': {

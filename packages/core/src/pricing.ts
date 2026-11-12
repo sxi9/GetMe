@@ -52,6 +52,8 @@ export interface Bill {
 }
 
 export const fmt = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN');
+/** INR → stablecoin units, rounded up to 2 decimals so the invoice always covers the bill. */
+export const toCrypto = (inr: number, rateInr: number) => Math.ceil((inr / rateInr) * 100) / 100;
 
 export function bill(o: Pick<Order, 'fee' | 'promo' | 'itemCost' | 'itemsTotal' | 'kind'>): Bill {
   const items = o.kind === 'parcel' ? 0 : o.itemCost != null ? o.itemCost : o.itemsTotal;
