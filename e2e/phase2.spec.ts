@@ -53,6 +53,7 @@ test('trip: runner announces, customer joins from checkout, runner starts and de
   const row = customer.getByRole('radio').filter({ hasText: /Lakshmi.*₹25/ }).first();
   await expect(row).toBeVisible();
   await row.click();
+  await customer.getByText('Cash on delivery').click();
   await shot(customer, '21-customer-checkout-join-trip');
   await customer.getByRole('button', { name: /Join the trip/ }).click();
   await expect(customer.getByText(/Riding along/).first()).toBeVisible();
@@ -93,9 +94,10 @@ test('GPS deliver-to, leave-at-door with proof photo, crypto payment gates the h
   await expect(customer.getByText('Delivering to your current location').first()).toBeVisible();
   await expect(customer.getByText(/Current location/).first()).toBeVisible();
   await shot(customer, '30-customer-gps-location');
+  await customer.addStyleTag({ content: '.toast-stack{display:none}' }); // toasts overlay the header; keep them out of the way
   await customer.getByRole('button', { name: 'Change delivery address' }).click();
-  await customer.getByText('Sunrise Residency').first().click();
-  await expect(customer.getByText(/B-304/).first()).toBeVisible();
+  await customer.locator('.sheet').getByText(/B-304/).first().click();
+  await expect(customer.locator('.chrome').getByText(/Sunrise Residency/).first()).toBeVisible();
 
   // order paid in crypto
   await customer.getByPlaceholder('e.g. 2 kg onions').fill('Ghee 1 kg');
@@ -120,7 +122,7 @@ test('GPS deliver-to, leave-at-door with proof photo, crypto payment gates the h
   await expect(partner.getByText(/Waiting for the customer/).first()).toBeVisible();
   await shot(partner, '33-partner-waiting-for-crypto');
   await customer.getByRole('button', { name: 'Simulate payment' }).click();
-  await expect(customer.getByText('Payment confirmed').first()).toBeVisible();
+  await expect(customer.getByText(/^check_circlePaid$|^Paid$/).first()).toBeVisible();
   await expect(partner.getByText(/Take a photo of the delivery at the door|Leave at the door/).first()).toBeVisible();
 
   // leave at the door: proof photo instead of a code
@@ -129,7 +131,7 @@ test('GPS deliver-to, leave-at-door with proof photo, crypto payment gates the h
   await shot(partner, '34-partner-leave-at-door-photo');
   await partner.getByRole('button', { name: 'Complete delivery' }).click();
   await expect(partner.getByText(/you earned/).first()).toBeVisible();
-  await expect(customer.getByText(/Left at your door with a photo/).first()).toBeVisible();
+  await expect(customer.getByText(/Left at the door · photo by/).first()).toBeVisible();
   await expect(customer.getByText(/USDT paid|paid/).first()).toBeVisible();
   await shot(customer, '35-customer-delivered-at-door');
 });
