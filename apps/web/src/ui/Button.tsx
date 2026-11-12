@@ -17,7 +17,7 @@ export function Button({ variant = 'filled', color = 'default', size = 'regular'
   const p = PALETTE[color];
   const base: CSSProperties = {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-100)', height: small ? 32 : tall ? 48 : 40, minWidth: small ? 32 : 40,
-    padding: `0 ${small ? 'var(--space-400)' : 'var(--space-600)'}`, borderRadius: 'var(--radius-100)', border: '1px solid transparent', fontFamily: 'var(--font-sans)',
+    padding: `0 ${small ? 'var(--space-400)' : 'var(--space-600)'}`, borderRadius: 'var(--radius-100)', borderWidth: 1, borderStyle: 'solid', borderColor: 'transparent', fontFamily: 'var(--font-sans)',
     fontWeight: tall ? 600 : 400, fontSize: small ? 'var(--size-button-small)' : tall ? 15 : 'var(--size-button)', lineHeight: 1, letterSpacing: 'var(--letter-spacing-button)', cursor: disabled ? 'not-allowed' : 'pointer',
     width: fullWidth ? '100%' : undefined, transition: 'background-color .15s ease, color .15s ease, border-color .15s ease', whiteSpace: 'nowrap', boxSizing: 'border-box', ...style,
   };

@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes } from 'react-router-dom';
 import './styles/app.css';
@@ -6,9 +6,9 @@ import { StoreProvider, useStore } from './lib/store';
 import { SignIn } from './lib/auth';
 import { Phone } from './lib/phone';
 import { Icon } from './ui';
-import { CustomerApp } from './customer/App';
-import { PartnerApp } from './partner/App';
-import { ShopApp } from './shop/App';
+const CustomerApp = lazy(() => import('./customer/App').then(m => ({ default: m.CustomerApp })));
+const PartnerApp = lazy(() => import('./partner/App').then(m => ({ default: m.PartnerApp })));
+const ShopApp = lazy(() => import('./shop/App').then(m => ({ default: m.ShopApp })));
 import { TrackPage } from './track';
 import type { Role } from '@getme/core';
 
@@ -21,7 +21,7 @@ function RoleApp({ role }: { role: Role }) {
 }
 function Gate({ role }: { role: Role }) {
   const { session } = useStore();
-  return <Phone>{!session ? <SignIn role={role} /> : role === 'customer' ? <CustomerApp /> : role === 'partner' ? <PartnerApp /> : <ShopApp />}</Phone>;
+  return <Phone>{!session ? <SignIn role={role} /> : <Suspense fallback={<div className="body" />}>{role === 'customer' ? <CustomerApp /> : role === 'partner' ? <PartnerApp /> : <ShopApp />}</Suspense>}</Phone>;
 }
 function Landing() {
   const roles: { to: string; icon: string; title: string; text: string }[] = [
