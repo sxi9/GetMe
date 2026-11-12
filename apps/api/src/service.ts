@@ -272,6 +272,7 @@ export class Service {
     if (wasOpen && nowActive && next.courierId) {
       const p = this.db.getPartner(next.courierId)!;
       this.db.putPartner({ ...p, activeOrderId: next.id });
+      this.bus.send(p.userId, { type: 'partner.updated', partner: this.db.getPartner(p.id)! });
       this.notify(next.customerId, `${p.name} accepted your request`, next.kind === 'parcel' ? 'Heading to the pickup now' : `Heading to ${next.shopId ? next.shopName : 'the nearest shop'} now`, next.id);
       this.pushMessage(next, 'partner', 'text', next.kind === 'parcel' ? 'Accepted. Heading to the pickup now.' : `Accepted. Heading to ${next.shopId ? next.shopName : 'the nearest shop'} now.`);
       if (ev.type !== 'accept') this.notify(p.userId, 'You got the job', `${next.id} · ₹${next.fee.delivery + next.fee.extra}`, next.id);
@@ -311,7 +312,7 @@ export class Service {
     // release the partner on terminal / unassign
     if (prev.courierId && (next.status === 'cancelled' || next.status === 'expired' || next.status === 'delivered' || !next.courierId)) {
       const p = this.db.getPartner(prev.courierId);
-      if (p && p.activeOrderId === next.id) this.db.putPartner({ ...p, activeOrderId: p.activeRunId ? this.nextRunOrderId(p.activeRunId, next.id) : null, trips: next.status === 'delivered' ? p.trips + 1 : p.trips });
+      if (p && p.activeOrderId === next.id) { this.db.putPartner({ ...p, activeOrderId: p.activeRunId ? this.nextRunOrderId(p.activeRunId, next.id) : null, trips: next.status === 'delivered' ? p.trips + 1 : p.trips }); this.bus.send(p.userId, { type: 'partner.updated', partner: this.db.getPartner(p.id)! }); }
     }
     if (next.status === 'cancelled') {
       const cu = this.partnerUser(prev.courierId);

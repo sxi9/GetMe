@@ -47,7 +47,10 @@ function Landing() {
   );
 }
 void registerSw();
-createRoot(document.getElementById('root')!).render(
+// Keep one React root even if this module is re-evaluated (Vite HMR in dev).
+const w = window as any;
+const root = w.__getmeRoot ?? (w.__getmeRoot = createRoot(document.getElementById('root')!));
+root.render(
   <StrictMode>
     <BrowserRouter>
       <Routes>

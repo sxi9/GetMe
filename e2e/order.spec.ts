@@ -10,7 +10,8 @@ const shot = (p: Page, name: string) => p.screenshot({ path: join(SHOTS, name + 
 async function signIn(browser: Browser, role: 'customer' | 'partner' | 'shop'): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width: 402, height: 874 } });
   const page = await ctx.newPage();
-  page.on('pageerror', e => { throw e; });
+  page.on('pageerror', e => { console.log(`[pageerror ${role}]`, e.stack ?? e.message); throw e; });
+  page.on('console', m => { if (m.type() === 'error' && !/favicon|404|net::/.test(m.text())) console.log(`[console ${role}]`, m.text().slice(0, 900)); });
   await page.goto(`/${role}`);
   await page.getByRole('button', { name: 'Send code' }).click();
   await page.getByLabel('One-time code').fill('1234');
