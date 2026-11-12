@@ -10,6 +10,7 @@ import { CallOverlay } from '../lib/phone';
 import { Avatar, Body, Button, Chip, Header, Icon, IconButton, Map, Sheet, Stars, StatusChip } from '../ui';
 import { statusLabel } from './Home';
 import { PAY_LABEL, dayAt, itemsLabel, orderSummary, timeAt, useCustomer, useOrderEvent } from './state';
+import { CryptoCard } from './CryptoCard';
 
 export function OrderScreen() {
   const { id } = useParams(); const nav = useNavigate();
@@ -179,6 +180,8 @@ function Track({ o }: { o: any }) {
   const eta = o.status === 'arrived' ? t('Partner is at your door') : o.status === 'shopping' ? (parcel ? t('Collecting the package') : t('Buying your items')) : o.etaMin != null ? t('Arriving in ~{n} min', { n: o.etaMin }) : t('On the way');
   const handoff = o.address.handoff ?? 'in_person';
   const showOtp = (o.status === 'to_customer' || o.status === 'arrived') && (parcel || handoff === 'in_person');
+  const courierLabel = o.courier && o.courierSpeedKmh > 0 ? `${o.courier.name.split(' ')[0]} · ${Math.round(o.courierSpeedKmh)} km/h` : o.courier?.name.split(' ')[0] ?? null;
+  const trafficLine = o.traffic && (o.status === 'to_customer' || o.status === 'to_shop') ? t('Traffic looks {level} on the way to you', { level: t(o.traffic) }) : null;
   const origin = o.shopPos ?? o.pickup;
   const share = async () => {
     try { const r = await api(`/api/orders/${o.id}/share`, { method: 'POST', body: {} }); const url = `${location.origin}/track/${r.token}`;
@@ -197,10 +200,7 @@ function Track({ o }: { o: any }) {
         <div className="grow"><div className="title">{t('Order')} {o.id}</div><div style={{ fontSize: 12, lineHeight: '16px', color: 'rgba(255,255,255,.75)' }}>{t(statusLabel(o))}</div></div>
       </Header>
       <Body pad style={{ padding: '0 0 24px' }}>
-        <div style={{ position: 'relative' }}>
-          <Map a={origin} aIcon={parcel ? 'inventory_2' : 'storefront'} b={o.address} bIcon={parcel ? 'person_pin_circle' : 'home'} courier={o.courierPos} route={origin ? [origin, o.address] : null} tall />
-          <div style={{ position: 'absolute', left: 12, bottom: 12, zIndex: 500, background: 'var(--gm-chrome)', color: '#fff', borderRadius: 999, padding: '6px 12px', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6, boxShadow: 'var(--shadow-menu)' }}><Icon name="schedule" size={16} color="var(--gm-accent)" />{eta}</div>
-        </div>
+        <Map a={origin} aIcon={parcel ? 'inventory_2' : 'storefront'} b={o.address} bIcon={parcel ? 'person_pin_circle' : 'home'} courier={o.courierPos} courierHeading={o.courierHeading} courierVehicle={o.courierVehicle ?? o.courier?.vehicle} courierTrail={o.courierTrail ?? []} courierLabel={courierLabel} route={origin ? [origin, o.address] : null} eta={eta} traffic={o.traffic ?? null} tall />
         <div className="col" style={{ padding: '0 16px', gap: 16 }}>
           {o.courier && <div className="card row" style={{ padding: 12 }}>
             <Avatar initials={o.courier.initials} src={o.courier.photoUrl} size="lg" />
@@ -208,11 +208,13 @@ function Track({ o }: { o: any }) {
             <IconButton icon="chat" label={t('Chat')} color="primary" onClick={() => nav(`/customer/order/${o.id}/chat`)} badge={unread[o.id] || undefined} />
             <IconButton icon="call" label={t('Call')} color="primary" onClick={() => setCalling(true)} />
           </div>}
+          {trafficLine && <div className="cap" style={{ marginTop: -8 }}><Icon name={o.traffic === 'heavy' ? 'traffic' : 'commute'} size={14} /> {trafficLine}</div>}
           <div className="row" style={{ gap: 8 }}><Button variant="outlined" icon="share" fullWidth style={{ flex: 1 }} onClick={share}>{t('Share trip')}</Button><Button variant="outlined" color="warn" icon="emergency" fullWidth style={{ flex: 1 }} onClick={() => setSos(true)}>{t('Safety')}</Button></div>
           {showOtp && <div className="card row flat" style={{ background: 'var(--surface-info-light)', borderColor: 'var(--brand-primary-rest)' }}>
             <div className="grow"><div className="b">{t('Handover code')}</div><div className="cap">{parcel ? t('Share this code with the receiver. They tell it to the partner at handover.') : t('Tell the partner this code when your items arrive')}</div></div>
             <div className="mono" style={{ fontSize: 24, fontWeight: 600, letterSpacing: 4, color: 'var(--brand-primary-rest)' }}>{o.otp}</div>
           </div>}
+          <CryptoCard o={o} />
           {!parcel && handoff !== 'in_person' && (o.status === 'to_customer' || o.status === 'arrived') && <div className="card row flat" style={{ background: 'var(--surface-info-light)', borderColor: 'var(--brand-primary-rest)' }}><Icon name="door_front" size={22} color="var(--brand-primary-rest)" /><div className="grow"><div className="b">{handoff === 'gate' ? t('Will be left at the gate') : t('Will be left at your door')}</div><div className="cap">{t('No code needed. The partner takes a photo as proof of delivery.')}</div></div></div>}
           {parcel && o.receiver && <div className="card row flat"><Icon name="person_pin_circle" size={22} color="var(--brand-fox-red)" /><div className="grow"><div className="b">{t('Receiver')} · {o.receiver.name}{o.receiver.phone ? ' · ' + o.receiver.phone : ''}</div><div className="cap">{t('Gets an SMS link with live tracking and the handover code')}</div></div></div>}
           <div className="card flat" style={{ padding: '12px 16px', gap: 10 }}>
@@ -258,8 +260,9 @@ function Delivered({ o }: { o: any }) {
         <div className="col" style={{ alignItems: 'center', gap: 6, padding: '12px 0 4px', textAlign: 'center' }}>
           <Icon name="check_circle" size={48} color="var(--brand-confirm-rest)" />
           <div style={{ font: '600 18px/24px var(--font-sans)' }}>{t('Delivered by {name} at {time}', { name: o.courierName, time: o.times.delivered ? timeAt(o.times.delivered) : '' })}</div>
-          <div className="cap13">{o.pay === 'cod' ? t('{total} paid in cash to the partner', { total: o.bill.totalLabel }) : t('{total} charged to {method}', { total: o.bill.totalLabel, method: t(PAY_LABEL[o.pay]) })}</div>
+          <div className="cap13">{o.pay === 'cod' ? t('{total} paid in cash to the partner', { total: o.bill.totalLabel }) : o.pay === 'crypto' ? (o.crypto?.status === 'paid' ? t('{amount} {currency} paid', { amount: o.crypto.amountCrypto, currency: o.crypto.currency }) : t('{total} · crypto payment pending', { total: o.bill.totalLabel })) : t('{total} charged to {method}', { total: o.bill.totalLabel, method: t(PAY_LABEL[o.pay]) })}</div>
         </div>
+        {o.pay === 'crypto' && o.crypto?.status !== 'paid' && <CryptoCard o={o} />}
         <PodPhoto o={o} />
         <div className="card flat"><div className="b">{t('Add a tip for {name}', { name: o.courierName })}</div><div className="wrap">{TIPS.map(v => <Chip key={v} label={v ? fmt(v) : t('No tip')} selected={tip === v} onClick={() => setTip(v)} />)}</div><div className="cap">{t('100% of the tip goes to the partner.')}</div></div>
         <div className="card flat"><div className="b">{t('Rate the delivery')}</div><Stars value={stars} onChange={setStars} /><div className="wrap">{TAGS.map(v => <Chip key={v} label={t(v)} selected={tags.includes(v)} onClick={() => setTags(x => x.includes(v) ? x.filter(y => y !== v) : [...x, v])} />)}</div></div>

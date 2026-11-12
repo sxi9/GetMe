@@ -80,7 +80,7 @@ export function CustomerProvider({ children }: { children: ReactNode }) {
 
   useEvent(ev => {
     if (ev.type === 'order.created' || ev.type === 'order.updated') patchOrder(ev.order);
-    else if (ev.type === 'location.updated') setOrders(m => m[ev.orderId!] ? { ...m, [ev.orderId!]: { ...m[ev.orderId!], courierPos: ev.pos } } : m);
+    else if (ev.type === 'location.updated') setOrders(m => m[ev.orderId!] ? { ...m, [ev.orderId!]: { ...m[ev.orderId!], courierPos: ev.pos, ...(ev.heading !== undefined ? { courierHeading: ev.heading } : {}), ...(ev.speedKmh !== undefined ? { courierSpeedKmh: ev.speedKmh } : {}), ...(ev.trail ? { courierTrail: ev.trail } : {}) } } : m);
     else if (ev.type === 'message.sent') { setLastMessage(ev.message); if (ev.message.from !== 'customer' && chatOpen.current !== ev.message.orderId) setUnread(u => ({ ...u, [ev.message.orderId]: (u[ev.message.orderId] ?? 0) + 1 })); }
     else if (ev.type === 'run.updated') { setRuns(rs => { const i = rs.findIndex(r => r.id === ev.run.id); const next = i >= 0 ? rs.map(r => r.id === ev.run.id ? { ...r, ...ev.run } : r) : rs; return next; }); refreshRuns().catch(() => {}); setBoard((b: any) => b ? { ...b, runs: b.runs.map((r: any) => r.id === ev.run.id ? { ...r, ...ev.run } : r) } : b); }
     else if (ev.type === 'announcement') setBoard((b: any) => b && b.community?.id === ev.announcement.communityId ? { ...b, announcements: [ev.announcement, ...b.announcements.filter((a: Announcement) => a.id !== ev.announcement.id)] } : b);
@@ -114,7 +114,7 @@ export function useOrderEvent() {
 export { ApiError };
 export const orderSummary = (o: any) => o.kind === 'parcel' ? 'Package to ' + (o.receiver?.name ?? 'receiver') : o.kind === 'list' ? 'Shopping list · ' + o.shopName : o.shopName;
 export const itemsLabel = (o: any) => o.kind === 'parcel' ? `${o.pkType} · ${o.pkSize} package · to ${o.receiver?.name ?? ''}${o.receiver?.phone ? ' (' + o.receiver.phone + ')' : ''}` : `${o.items.length} item${o.items.length > 1 ? 's' : ''} · ` + o.items.map((i: any) => i.name + ' × ' + i.qty).join(', ');
-export const PAY_LABEL: Record<string, string> = { cod: 'Cash on delivery', upi: 'UPI', card: 'Card', wallet: 'GetMe wallet' };
+export const PAY_LABEL: Record<string, string> = { cod: 'Cash on delivery', upi: 'UPI', card: 'Card', wallet: 'GetMe wallet', crypto: 'Crypto (USDT / USDC)' };
 /** Address fields for a quote / order: saved → by id, otherwise inline. */
 export const addressInput = (a: Address | null) => a ? (a.id ? { addressId: a.id } : { address: a }) : {};
 export const timeAt = (iso: string) => new Date(iso).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });

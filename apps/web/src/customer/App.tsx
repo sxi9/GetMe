@@ -9,6 +9,8 @@ import { OrderScreen } from './OrderScreen';
 import { ChatScreen } from './ChatScreen';
 import { Orders } from './Orders';
 import { Profile } from './Profile';
+import { RunDetail, Runs } from './Runs';
+import { CommunityScreen } from './Community';
 
 export function CustomerApp() {
   return (
@@ -23,6 +25,9 @@ export function CustomerApp() {
         <Route path="order/:id/chat" element={<ChatScreen />} />
         <Route path="orders" element={<Orders />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="runs" element={<Runs />} />
+        <Route path="runs/:id" element={<RunDetail />} />
+        <Route path="community" element={<CommunityScreen />} />
         <Route path="*" element={<Navigate to="/customer" replace />} />
       </Routes>
     </CustomerProvider>

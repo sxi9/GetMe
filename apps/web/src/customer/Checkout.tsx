@@ -67,7 +67,7 @@ export function Checkout() {
   const shopLine = coKind === 'parcel' ? `${t('Package')} · ${pkg.type} · ${pkg.size}` : quote?.shop ? quote.shop.name : t('Any nearby shop · partner picks the closest');
   const whenLabel = coKind === 'list' && list.when === 'schedule' ? list.slot : t('Deliver now');
   const note = coKind === 'parcel' ? t('Price depends on package size. The receiver gets an SMS link with live tracking.') : quote?.itemsTotal != null ? t('Paid when the order is delivered.') : t('The partner adds the item cost and a receipt after buying. You pay the final total on delivery.');
-  const payCaption: Record<string, string> = { cod: t('Pay the partner when items arrive'), upi: session?.me.user.email ? `${session.me.user.email.split('@')[0]}@okaxis` : t('Pay with any UPI app'), card: 'HDFC •••• 4421', wallet: `${t('Balance')} ${fmt(wallet)}` };
+  const payCaption: Record<string, string> = { cod: t('Pay the partner when items arrive'), upi: session?.me.user.email ? `${session.me.user.email.split('@')[0]}@okaxis` : t('Pay with any UPI app'), card: 'HDFC •••• 4421', wallet: `${t('Balance')} ${fmt(wallet)}`, crypto: t('Pay in stablecoin once the bill is final · partners are paid in rupees') };
   const cta: Record<DispatchMode, string> = { broadcast: t('Send to partners nearby'), offers: t('Ask for offers'), choose: t('Choose a partner'), run: t('Join the trip') };
   const back = () => nav(coKind === 'parcel' ? '/customer/package' : coKind === 'shop' ? `/customer/shop/${cart.shopId}` : '/customer/list');
   const modes = MODES.filter(m => m.id !== 'run' || coKind !== 'parcel');
