@@ -12,6 +12,7 @@ import type { Push, Sms } from './push.js';
 import type { Crypto } from './crypto.js';
 import type { Fcm } from './fcm.js';
 import { now, otp4, token, uid } from './ids.js';
+import { num, oneOf, text } from './security.js';
 
 export interface Ctx { user: User; partner: Partner | null; shop: Shop | null }
 
@@ -129,6 +130,11 @@ export class Service {
 
   // ---------- quotes & creation
   quote(ctx: Ctx, input: CreateOrderInput) {
+    input.kind = oneOf(input.kind, ['list', 'shop', 'parcel'] as const, 'list');
+    input.mode = oneOf(input.mode, ['broadcast', 'offers', 'choose', 'run'] as const, 'broadcast');
+    input.pay = oneOf(input.pay, ['cod', 'upi', 'card', 'wallet', 'crypto'] as const, 'cod');
+    if ((input.items ?? []).length > 60) throw new DomainError('invalid', 'A list can have up to 60 items');
+    input.items = (input.items ?? []).map(i => ({ name: text(i?.name, 80), qty: num(i?.qty, 1, 50, 1)!, itemId: typeof i?.itemId === 'string' ? i.itemId.slice(0, 40) : undefined }));
     const addr = this.resolveAddress(ctx, input);
     const region = this.regionAt(addr);
     const run = input.runId ? this.db.getRun(input.runId) : null;
@@ -175,7 +181,8 @@ export class Service {
       // inline address: GPS / pin / typed. Without coordinates (typed only) the drop sits a little north-west of home until geocoded.
       const home = this.db.addresses(ctx.user.id)[0];
       const a = input.address;
-      return { ...a, id: a.id, label: a.label ?? 'Drop', line: a.line || a.landmark || 'Pinned location', area: a.area, lat: a.lat ?? (home?.lat ?? 12.9121) + 0.02, lng: a.lng ?? (home?.lng ?? 77.6446) - 0.02, handoff: a.handoff ?? 'in_person' } as Address;
+      const lat = num(a.lat, -90, 90), lng = num(a.lng, -180, 180);
+      return { label: text(a.label, 40, 'Drop'), line: text(a.line, 200) || text(a.landmark, 200) || 'Pinned location', area: text(a.area, 120) || undefined, landmark: text(a.landmark, 200) || undefined, building: text(a.building, 80) || undefined, tower: text(a.tower, 20) || undefined, floor: text(a.floor, 20) || undefined, flat: text(a.flat, 20) || undefined, directions: text(a.directions, 500) || undefined, gatePhotoUrl: typeof a.gatePhotoUrl === 'string' && a.gatePhotoUrl.startsWith('/uploads/') ? a.gatePhotoUrl : null, lat: lat ?? (home?.lat ?? 12.9121) + 0.02, lng: lng ?? (home?.lng ?? 77.6446) - 0.02, handoff: oneOf(a.handoff, ['in_person', 'gate', 'leave_at_door'] as const, 'in_person'), source: oneOf(a.source, ['gps', 'pin', 'typed', 'saved'] as const, 'typed') } as Address;
     }
     const first = this.db.addresses(ctx.user.id)[0];
     if (!first) throw new DomainError('no_address', 'Add a delivery address first');
@@ -188,7 +195,7 @@ export class Service {
       const err = validateParcel({ drop: input.address?.line, receiverName: input.receiver?.name, receiverPhone: input.receiver?.phone });
       if (err) throw new DomainError('invalid', err);
     }
-    if (input.idempotencyKey) { const prev = this.db.getMeta('idem:' + input.idempotencyKey); if (prev) { const o = this.db.getOrder(prev); if (o) return o; } }
+    if (input.idempotencyKey) { const prev = this.db.getMeta(`idem:${ctx.user.id}:${String(input.idempotencyKey).slice(0, 80)}`); if (prev) { const o = this.db.getOrder(prev); if (o && o.customerId === ctx.user.id) return o; } }
     const q = this.quote(ctx, input);
     const region = this.regionAt(q.address);
     if (input.pay === 'wallet' && this.db.balance(ctx.user.id) < q.bill.fees) throw new DomainError('wallet_low', 'Wallet balance does not cover the delivery fees. Add money or pick another method');
@@ -204,14 +211,14 @@ export class Service {
       mode: input.mode, runId: null, regionId: region.id, dispatch: { radiusKm: region.radiusKm, expandEveryMs: region.expandEveryMs, expireAfterMs: region.expireAfterMs },
       pay: input.pay, promoCode: q.promo ? (input.promoCode ?? '').toUpperCase() : null, promo: q.promo,
       when: input.when ?? 'now', slot: input.slot ?? null, scheduledAt: input.when === 'schedule' ? (input.scheduledAt ?? slotToIso(input.slot)) : null,
-      budget: input.budget ?? null, subs: input.subs ?? true, repeat: !!input.repeat, note: input.note ?? '', receiver: input.receiver ?? null,
-      pkType: input.pkType ?? null, pkSize: input.pkSize ?? null,
+      budget: num(input.budget, 0, 100000), subs: input.subs ?? true, repeat: !!input.repeat, note: text(input.note, 500), receiver: input.receiver ? { name: text(input.receiver.name, 80), phone: text(input.receiver.phone, 15) } : null,
+      pkType: input.pkType ? text(input.pkType, 40) : null, pkSize: input.pkSize ? oneOf(input.pkSize, ['Small', 'Medium', 'Large'] as const, 'Small') : null,
       status: 'requesting', courierId: null, courierName: null, chosenId: null, offers: [], counter: null, declinedIds: [], seenIds: [],
       fee: q.fee, itemCost: null, receiptUrl: null, pickupPhotoUrl: null, otp: otp4(), cashCollected: false, podPhotoUrl: null, crypto: null, idempotencyKeys: [], tip: 0, rating: null, customerRating: null,
       issue: null, refund: null, cancelReason: null, cancelledBy: null, times: { requesting: t }, searchRadiusKm: region.radiusKm[0], createdAt: t, updatedAt: t,
     };
     this.db.putOrder(o);
-    if (input.idempotencyKey) this.db.setMeta('idem:' + input.idempotencyKey, o.id);
+    if (input.idempotencyKey) this.db.setMeta(`idem:${ctx.user.id}:${String(input.idempotencyKey).slice(0, 80)}`, o.id);
     if (o.kind === 'shop' && shop) {
       this.db.putShopStatus(o.id, shop.id, 'new');
       this.notify(shop.ownerId, 'New order', `${o.id} from ${o.anon ? 'a customer' : o.customerName.split(' ')[0]} · ${o.items.length} item${o.items.length > 1 ? 's' : ''}`, o.id);
@@ -246,6 +253,11 @@ export class Service {
     if (!o) throw new DomainError('not_found', 'Order not found');
     if (idempotencyKey && o.idempotencyKeys.includes(idempotencyKey)) return o; // offline replay of an event already applied
     const role = ctx.user.role;
+    const e: any = ev;
+    if (typeof e.reason === 'string') e.reason = text(e.reason, 200); if (typeof e.issue === 'string') e.issue = text(e.issue, 80); if (typeof e.substitute === 'string') e.substitute = text(e.substitute, 80);
+    if (e.type === 'tip') e.amount = num(e.amount, 0, 1000, 0); if (e.type === 'counter') e.amount = num(e.amount, 1, 1000, 1); if (e.type === 'offer') { e.price = num(e.price, 1, 2000, 1); e.etaMin = num(e.etaMin, 1, 600, 10); }
+    if (e.type === 'bought' && e.itemCost != null) e.itemCost = num(e.itemCost, 0, 100000, 0); if (typeof e.receiptUrl === 'string' && !e.receiptUrl.startsWith('/uploads/')) e.receiptUrl = null; if (typeof e.podPhotoUrl === 'string' && !e.podPhotoUrl.startsWith('/uploads/')) e.podPhotoUrl = null;
+    if (Array.isArray(e.tags)) e.tags = e.tags.filter((t: unknown) => typeof t === 'string').map((t: string) => t.slice(0, 40)).slice(0, 8);
     if (role === 'admin') { const r = apply(o, { ...ev, actor: ev.type === 'cancel' ? 'system' : ev.actor } as OrderEventInput); if (!r.ok) throw new DomainError(r.code, r.message); return this.commit(o, r.order, ev); }
     // authorisation: actors must match the caller's role, and partners must identify as themselves
     if (ev.actor !== role && !(ev.actor === 'system' && role === 'partner' && ev.type === 'unassign')) throw new DomainError('forbidden', 'Not allowed');
@@ -558,10 +570,10 @@ export class Service {
     if (p.activeRunId) throw new DomainError('busy', 'Finish your current trip first');
     if (!(input.label || '').trim() || !(input.destination || '').trim()) throw new DomainError('invalid', 'Give the trip a name and a destination');
     const depart = Date.parse(input.departAt); if (!(depart > Date.now())) throw new DomainError('invalid', 'Departure must be in the future');
-    const fee = Math.round(Number(input.feePerOrder)); if (!(fee >= 10)) throw new DomainError('invalid', 'Fee per order must be at least ₹10');
+    const fee = Math.round(Number(input.feePerOrder)); if (!(fee >= 10 && fee <= 2000)) throw new DomainError('invalid', 'Fee per order must be between ₹10 and ₹2,000');
     const t = now();
     const from: Address = { label: 'Start', line: input.fromAddress?.line ?? p.area, lat: input.fromAddress?.lat ?? p.pos?.lat ?? 12.9121, lng: input.fromAddress?.lng ?? p.pos?.lng ?? 77.6446, area: input.fromAddress?.area };
-    const run: Run = { id: uid('run_'), partnerId: p.id, partnerName: p.name, label: input.label.trim(), destination: input.destination.trim(), destinationPos: input.destinationPos ?? null, from, departAt: new Date(depart).toISOString(), cutoffAt: input.cutoffAt ? new Date(input.cutoffAt).toISOString() : new Date(depart - 30 * 60_000).toISOString(), capacity: Math.max(1, Math.min(30, Math.round(Number(input.capacity) || 6))), feePerOrder: fee, communityId: input.communityOnly ? (ctx.user.communityId ?? null) : null, status: 'open', orderIds: [], note: (input.note ?? '').trim(), createdAt: t, updatedAt: t };
+    const run: Run = { id: uid('run_'), partnerId: p.id, partnerName: p.name, label: text(input.label, 80), destination: text(input.destination, 120), destinationPos: input.destinationPos ?? null, from, departAt: new Date(depart).toISOString(), cutoffAt: input.cutoffAt ? new Date(input.cutoffAt).toISOString() : new Date(depart - 30 * 60_000).toISOString(), capacity: Math.max(1, Math.min(30, Math.round(Number(input.capacity) || 6))), feePerOrder: fee, communityId: input.communityOnly ? (ctx.user.communityId ?? null) : null, status: 'open', orderIds: [], note: text(input.note, 300), createdAt: t, updatedAt: t };
     this.db.putRun(run);
     this.broadcastRun(run);
     // tell the community (notice board) and nearby customers
@@ -662,7 +674,7 @@ export class Service {
     if (!(input.name || '').trim()) throw new DomainError('invalid', 'Give the community a name');
     const pos = input.pos ?? this.db.addresses(ctx.user.id)[0] ?? { lat: 12.9121, lng: 77.6446 };
     const code = (input.name.replace(/[^a-z]/gi, '').slice(0, 6).toUpperCase() || 'GETME') + String(Math.floor(100 + Math.random() * 900));
-    const c: Community = { id: uid('com_'), name: input.name.trim(), kind: input.kind ?? 'apartment', address: (input.address ?? '').trim(), pos: { lat: pos.lat, lng: pos.lng }, joinCode: code, adminIds: [ctx.user.id], memberCount: 1, regionId: this.regionAt(pos).id, createdAt: now() };
+    const c: Community = { id: uid('com_'), name: text(input.name, 80), kind: oneOf(input.kind, ['apartment', 'village', 'town'] as const, 'apartment'), address: text(input.address, 200), pos: { lat: pos.lat, lng: pos.lng }, joinCode: code, adminIds: [ctx.user.id], memberCount: 1, regionId: this.regionAt(pos).id, createdAt: now() };
     this.db.putCommunity(c);
     this.db.putUser({ ...ctx.user, communityId: c.id });
     return c;
@@ -683,7 +695,7 @@ export class Service {
     return { community: c, announcements: this.db.announcements(cid), runs, members: this.db.usersInCommunity(cid).map(u => ({ id: u.id, name: u.name, role: u.role, photoUrl: u.photoUrl ?? null })) };
   }
   announce_(communityId: string, author: User, text: string, runId: string | null = null): Announcement {
-    const a: Announcement = { id: uid('an_'), communityId, authorId: author.id, authorName: author.name, text: text.trim(), runId, at: now() };
+    const a: Announcement = { id: uid('an_'), communityId, authorId: author.id, authorName: author.name, text: text.trim().slice(0, 500), runId, at: now() };
     this.db.putAnnouncement(a);
     this.bus.sendMany(this.db.usersInCommunity(communityId).map(u => u.id), { type: 'announcement', announcement: a });
     return a;

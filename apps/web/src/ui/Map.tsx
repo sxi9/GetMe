@@ -23,10 +23,11 @@ export interface MapProps {
 }
 const VEHICLE_ICON: Record<string, string> = { Bike: 'two_wheeler', Scooter: 'moped', Cycle: 'pedal_bike' };
 const TRAFFIC_COLOR: Record<TrafficLevel, string> = { light: '#0F9135', moderate: '#F27700', heavy: '#A51E23' };
-const div = (cls: string, inner = '', size = 22) => L.divIcon({ className: '', html: `<div class="${cls}">${inner}</div>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]!));
+const div = (cls: string, inner = '', size = 22) => L.divIcon({ className: '', html: `<div class="${esc(cls)}">${esc(inner)}</div>`, iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 const vehicleIcon = (vehicle: string | null | undefined, heading: number | null | undefined, label?: string | null) => L.divIcon({
   className: 'vehicle-marker',
-  html: `<div class="vehicle"><div class="ring"></div><div class="arrow" style="transform:rotate(${heading ?? 0}deg)"><span class="gm-icon tip is-filled">navigation</span></div><div class="body"><span class="gm-icon">${VEHICLE_ICON[vehicle ?? ''] ?? 'two_wheeler'}</span></div>${label ? `<div class="lbl">${label}</div>` : ''}</div>`,
+  html: `<div class="vehicle"><div class="ring"></div><div class="arrow" style="transform:rotate(${Number(heading) || 0}deg)"><span class="gm-icon tip is-filled">navigation</span></div><div class="body"><span class="gm-icon">${esc(VEHICLE_ICON[vehicle ?? ''] ?? 'two_wheeler')}</span></div>${label ? `<div class="lbl">${esc(label)}</div>` : ''}</div>`,
   iconSize: [44, 44], iconAnchor: [22, 22],
 });
 

@@ -223,7 +223,7 @@ test('phase 2: communities, notice board, admin verification, shop approval, ref
   assert.equal((await j('/api/wallet', { token: c.token })).balance, before + 30);
   // push
   const vapid = await j('/api/push/vapid'); assert.ok(vapid.publicKey.length > 20);
-  await j('/api/push/subscribe', { body: { endpoint: 'https://push.example/abc', keys: { p256dh: 'x', auth: 'y' } }, token: c.token });
+  await j('/api/push/subscribe', { body: { endpoint: 'https://fcm.googleapis.com/fcm/send/abc', keys: { p256dh: 'x', auth: 'y' } }, token: c.token });
   const t = await j('/api/push/test', { body: {}, token: c.token }); assert.equal(t.delivered, 0, 'fake endpoint is pruned, no crash');
   const regions = await j('/api/admin/regions', { method: 'PUT', body: [{ id: 'hill', surcharge: 1.5 }], token: a.token }); assert.equal(regions.find((r: any) => r.id === 'hill').surcharge, 1.5);
 });

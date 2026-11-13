@@ -48,6 +48,10 @@ Delivery incumbents each own one loud colour (Swiggy orange, Zomato red, Blinkit
 - Core unit tests: 16. API integration tests: 9. Playwright: 3 specs across customer, partner, runner and shop, with screenshots.
 - Typecheck and production build clean; `cap sync` succeeds for the three native targets.
 
-## 6. Known stubs
+## 6. Security audit (2026-11-13)
+
+Dependency audit found 29 advisories (fastify, @fastify/static with glob/minimatch, react-router); all fixed by upgrading, audit now clean. Code audit fixed: HTML injection through partner names in map markers, SVG uploads served same-origin (scripts), no OTP attempt limit or rate limit, sessions that never expired, idempotency keys shared across users, unbounded text and numeric inputs, missing coordinate validation, Web Push endpoints accepted for any host, unvalidated admin region overrides, reflective CORS, and missing security headers. Seven regression tests cover these in `apps/api/test/security.test.ts`.
+
+## 7. Known stubs
 
 Fixed dev OTP, Google sign-in without token verification, simulated crypto provider, console SMS provider, local-disk uploads, straight-line routing with a traffic model, no UPI/card gateway or bank payouts. All are adapters with environment switches; see `docs/SETUP.md`.

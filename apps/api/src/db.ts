@@ -7,7 +7,7 @@ import { dirname } from 'node:path';
 import type { Announcement, Community, LedgerEntry, Message, Notification, Order, Partner, PushSubscriptionRecord, Run, Shop, Subscription, User } from '@getme/core';
 
 export interface Session { token: string; userId: string; createdAt: string }
-export interface Otp { phone: string; code: string; role: string; expiresAt: string }
+export interface Otp { phone: string; code: string; role: string; expiresAt: string; attempts: number }
 
 export class Db {
   sql: DatabaseSync;
@@ -18,7 +18,7 @@ export class Db {
       PRAGMA journal_mode = WAL;
       CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, role TEXT NOT NULL, phone TEXT, email TEXT, data TEXT NOT NULL);
       CREATE UNIQUE INDEX IF NOT EXISTS users_phone_role ON users(phone, role);
-      CREATE TABLE IF NOT EXISTS otps (phone TEXT NOT NULL, role TEXT NOT NULL, code TEXT NOT NULL, expires_at TEXT NOT NULL, PRIMARY KEY(phone, role));
+      CREATE TABLE IF NOT EXISTS otps (phone TEXT NOT NULL, role TEXT NOT NULL, code TEXT NOT NULL, expires_at TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(phone, role));
       CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS shops (id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, data TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS partners (id TEXT PRIMARY KEY, user_id TEXT NOT NULL UNIQUE, data TEXT NOT NULL);
@@ -65,11 +65,14 @@ export class Db {
   findUserByPhone(phone: string, role: string) { return this.row<User>('SELECT data FROM users WHERE phone=? AND role=?', phone, role); }
   findUserByEmail(email: string, role: string) { return this.row<User>('SELECT data FROM users WHERE email=? AND role=?', email, role); }
   putUser(u: User) { this.sql.prepare('INSERT INTO users(id,role,phone,email,data) VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET phone=excluded.phone,email=excluded.email,data=excluded.data').run(u.id, u.role, u.phone, u.email, JSON.stringify(u)); }
-  putOtp(o: Otp) { this.sql.prepare('INSERT INTO otps(phone,role,code,expires_at) VALUES(?,?,?,?) ON CONFLICT(phone,role) DO UPDATE SET code=excluded.code,expires_at=excluded.expires_at').run(o.phone, o.role, o.code, o.expiresAt); }
-  getOtp(phone: string, role: string): Otp | null { const r = this.sql.prepare('SELECT phone,role,code,expires_at as expiresAt FROM otps WHERE phone=? AND role=?').get(phone, role) as any; return r ?? null; }
+  putOtp(o: Otp) { this.sql.prepare('INSERT INTO otps(phone,role,code,expires_at,attempts) VALUES(?,?,?,?,0) ON CONFLICT(phone,role) DO UPDATE SET code=excluded.code,expires_at=excluded.expires_at,attempts=0').run(o.phone, o.role, o.code, o.expiresAt); }
+  getOtp(phone: string, role: string): Otp | null { const r = this.sql.prepare('SELECT phone,role,code,expires_at as expiresAt,attempts FROM otps WHERE phone=? AND role=?').get(phone, role) as any; return r ?? null; }
+  bumpOtpAttempts(phone: string, role: string): number { this.sql.prepare('UPDATE otps SET attempts=attempts+1 WHERE phone=? AND role=?').run(phone, role); return (this.getOtp(phone, role)?.attempts ?? 0); }
   delOtp(phone: string, role: string) { this.sql.prepare('DELETE FROM otps WHERE phone=? AND role=?').run(phone, role); }
   putSession(s: Session) { this.sql.prepare('INSERT INTO sessions(token,user_id,created_at) VALUES(?,?,?)').run(s.token, s.userId, s.createdAt); }
-  getSession(token: string): Session | null { const r = this.sql.prepare('SELECT token,user_id as userId,created_at as createdAt FROM sessions WHERE token=?').get(token) as any; return r ?? null; }
+  getSession(token: string, ttlMs = 30 * 24 * 3600_000): Session | null { const r = this.sql.prepare('SELECT token,user_id as userId,created_at as createdAt FROM sessions WHERE token=?').get(token) as any; if (!r) return null; if (Date.now() - Date.parse(r.createdAt) > ttlMs) { this.delSession(token); return null; } return r; }
+  pruneSessions(ttlMs = 30 * 24 * 3600_000) { this.sql.prepare('DELETE FROM sessions WHERE created_at < ?').run(new Date(Date.now() - ttlMs).toISOString()); }
+  delSessionsForUser(userId: string) { this.sql.prepare('DELETE FROM sessions WHERE user_id=?').run(userId); }
   delSession(token: string) { this.sql.prepare('DELETE FROM sessions WHERE token=?').run(token); }
 
   // ---- shops

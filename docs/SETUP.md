@@ -75,6 +75,8 @@ Copy `.env.example` to `apps/api/.env` (or export the variables). Everything has
 | `GEOCODER` | `nominatim` | OpenStreetMap geocoding with a persistent cache and a local gazetteer fallback. Set `GEOCODER=off` to use only the gazetteer |
 | `PUBLIC_URL` | empty | Web origin used in SMS tracking links |
 | `LOG` | `1` | `0` silences the API log |
+| `ALLOWED_ORIGINS` | empty | Comma-separated browser origins for CORS. Leave empty when the web app is served behind the same host |
+| `OTP_PER_PHONE`, `OTP_PER_IP` | 5 / 20 in production | Sign-in code request limits per 15 minutes; relaxed automatically while `DEV_OTP` is set |
 | `VITE_API_URL` (web) | empty | Set to the API origin when the web app is not served behind the same host |
 
 ## 4. Tests
@@ -138,6 +140,21 @@ Process management: `pm2 start "pnpm start" --name getme-api` or a systemd unit 
 | `node:sqlite` experimental warning | Harmless on Node 22; silent on Node 23+ |
 | Port 5173 or 4000 already in use | `PORT=4001 pnpm dev:api` and `API_PORT=4001 pnpm dev:web` |
 
-## 7. Theme
+## 7. Security notes
+
+What the API enforces, so you know what you do not have to add:
+
+- Sessions are random 192-bit tokens, expire after 30 days, and can be revoked per device (`/api/auth/logout`) or everywhere (`/api/auth/logout-all`).
+- Sign-in codes expire in 5 minutes, lock after 5 wrong attempts, and code requests are rate limited per phone and per IP. Admin accounts cannot self-register.
+- Every order action is authorised by role and ownership inside one reducer; the partner never receives the handover code, anonymous customers are never named, shops never see addresses.
+- Uploads accept JPG, PNG and WebP only (checked by magic bytes, not the declared type), are rate limited, and are served with `nosniff` and a sandboxing CSP. Every stored photo URL must point at `/uploads/`.
+- Free text is trimmed, stripped of control characters and length-capped; numbers, enums and coordinates are clamped; idempotency keys are scoped to the user; Web Push endpoints must belong to a known push service; admin region edits are validated field by field.
+- Crypto webhooks are verified with the provider's HMAC; simulated payments are refused when a real provider is configured.
+- Security headers on every response: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`.
+- Map marker HTML escapes partner names and labels.
+
+Still on you: HTTPS at the proxy, backups of `DATA_DIR`, rotating `VAPID_*`, provider keys and the FCM service account, and running the rate limiter in Redis if you scale past one API process (it is in-memory today). `pnpm audit --prod` is clean at the time of writing; rerun it before each release.
+
+## 8. Theme
 
 All colours, type sizes, radii and shadows are CSS variables in `apps/web/src/styles/theme/tokens.css` (light and dark blocks) and the fonts in `theme/fonts.css`. To rebrand, edit those two files; no component changes are needed. The primary action colour is `--brand-primary-rest`, the header colour `--gm-chrome`, the accent `--gm-accent`.
